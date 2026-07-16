@@ -1,0 +1,16 @@
+# Local config (may contain internal IPs/hostnames)
+config.yaml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Editors
+.vscode/
+.idea/

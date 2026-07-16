@@ -1,0 +1,35 @@
+[project]
+name = "roost"
+version = "0.1.0"
+description = "Terminal dashboard for monitoring a homelab: Docker containers, host metrics, service uptime, LAN device/exposure scanning, and OpenCanary honeypot alerts."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "textual>=0.58",
+    "psutil>=5.9",
+    "docker>=7.0",
+    "paramiko>=3.4",   # needed by docker-py's ssh:// transport (remote Docker over SSH)
+    "httpx>=0.27",
+    "PyYAML>=6.0",
+    "mac-vendor-lookup>=0.1.12",
+]
+
+[project.scripts]
+roost = "roost.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["roost*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
