@@ -10,6 +10,13 @@ import yaml
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 
 
+class ConfigError(Exception):
+    """A config.yaml that fails to parse, or is missing/mistyping a required
+    field. Caught in __main__ to print a clean one-line message instead of a
+    raw traceback — a config typo is common and shouldn't look like a crash.
+    """
+
+
 @dataclass(frozen=True)
 class UptimeTarget:
     name: str
@@ -86,37 +93,69 @@ class CanaryConfig:
 @dataclass(frozen=True)
 class AppConfig:
     refresh_interval: float = 5.0
+    # Mouse support — on by default. Only turn this off on a legacy Windows
+    # console (conhost.exe, not Windows Terminal) that leaks raw mouse
+    # escape sequences as visible text instead of consuming them.
+    mouse: bool = True
     docker: DockerConfig = field(default_factory=DockerConfig)
     host: HostConfig = field(default_factory=HostConfig)
     uptime: UptimeConfig = field(default_factory=UptimeConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
     canary: CanaryConfig = field(default_factory=CanaryConfig)
+    # SQLite file backing the Security Events panel's history/triage state,
+    # resolved relative to the config file's directory (same convention as
+    # config.yaml itself).
+    events_db: str = "roost_events.db"
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:
     if not path.exists():
         return AppConfig()
 
+    try:
+        return _parse_config(path)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{path} is not valid YAML: {exc}") from exc
+    except (KeyError, TypeError, AttributeError) as exc:
+        # Covers both an explicitly-missing required field (KeyError, e.g. an
+        # uptime target with no `name`) and a wrong-shaped section (e.g.
+        # `docker: true` instead of a mapping, which makes the next
+        # `.get(...)` call raise AttributeError/TypeError) — there are too
+        # many ways a hand-edited YAML file can be malformed to enumerate
+        # them all, so this boundary degrades any of them to one clear
+        # message rather than a raw traceback.
+        raise ConfigError(f"{path} has an invalid or incomplete section ({exc})") from exc
+
+
+def _parse_config(path: Path) -> AppConfig:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path} must contain a YAML mapping (key: value pairs) at the top level")
 
     docker_raw = raw.get("docker", {}) or {}
     host_raw = raw.get("host", {}) or {}
     uptime_raw = raw.get("uptime", {}) or {}
     network_raw = raw.get("network", {}) or {}
 
-    targets = [
-        UptimeTarget(
+    targets = []
+    for i, t in enumerate(uptime_raw.get("targets", [])):
+        for required in ("name", "type"):
+            if required not in t:
+                raise ConfigError(
+                    f"uptime.targets[{i}] ({t.get('name', '?')!r}) is missing required field '{required}'"
+                )
+        targets.append(UptimeTarget(
             name=t["name"],
             type=t["type"],
             address=t.get("address", ""),
             url=t.get("url", ""),
             port=t.get("port", 0),
-        )
-        for t in uptime_raw.get("targets", [])
-    ]
+        ))
 
     return AppConfig(
         refresh_interval=raw.get("refresh_interval", 5.0),
+        mouse=raw.get("mouse", True),
+        events_db=raw.get("events_db", "roost_events.db"),
         docker=DockerConfig(
             enabled=docker_raw.get("enabled", True),
             host=docker_raw.get("host"),

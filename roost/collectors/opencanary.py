@@ -14,23 +14,29 @@ import asyncio
 import json
 
 from ..config import CanaryConfig
-from ..models import CanaryAlert
+from ..models import SecurityEvent
 from .portscan import SERVICE_NAMES
 
 
-def _format_summary(logdata: dict) -> str:
+def _classify(logdata: dict) -> tuple[str, str, str]:
+    """Returns (event_type, severity, summary) for a decoy interaction.
+    A credential attempt is the clearest possible signal (someone tried to
+    log in to a service that doesn't exist for real) so it's always high;
+    anything else structured is a probe worth a look; a bare connection with
+    no logdata at all is the least specific signal OpenCanary can produce.
+    """
     if "USERNAME" in logdata or "PASSWORD" in logdata:
         user = logdata.get("USERNAME", "?")
         password = logdata.get("PASSWORD", "?")
-        return f"login attempt: {user}/{password}"
+        return "credential_attempt", "high", f"login attempt: {user}/{password}"
     if "PATH" in logdata:
-        return f"GET {logdata['PATH']}"
+        return "http_probe", "medium", f"GET {logdata['PATH']}"
     if logdata:
-        return ", ".join(f"{k}={v}" for k, v in logdata.items())
-    return "connection"
+        return "http_probe", "medium", ", ".join(f"{k}={v}" for k, v in logdata.items())
+    return "connection", "low", "connection"
 
 
-def _parse_alert(line: str) -> CanaryAlert | None:
+def _parse_event(line: str) -> SecurityEvent | None:
     try:
         entry = json.loads(line)
     except json.JSONDecodeError:
@@ -42,16 +48,22 @@ def _parse_alert(line: str) -> CanaryAlert | None:
 
     dst_port = entry.get("dst_port", -1)
     logdata = entry.get("logdata") or {}
-    return CanaryAlert(
-        utc_time=entry.get("utc_time", ""),
-        service=SERVICE_NAMES.get(dst_port, f"port {dst_port}"),
-        src_host=src_host,
-        dst_port=dst_port,
-        summary=_format_summary(logdata),
+    event_type, severity, summary = _classify(logdata)
+    service = SERVICE_NAMES.get(dst_port, f"port {dst_port}")
+
+    return SecurityEvent(
+        ts=entry.get("utc_time", ""),
+        source="canary",
+        event_type=event_type,
+        severity=severity,
+        target=src_host,
+        service=service,
+        summary=summary,
+        detail={"dst_port": dst_port, "src_port": entry.get("src_port"), "logdata": logdata},
     )
 
 
-async def collect(config: CanaryConfig) -> list[CanaryAlert]:
+async def collect(config: CanaryConfig) -> list[SecurityEvent]:
     if not config.enabled or not config.ssh_target:
         return []
 
@@ -74,10 +86,10 @@ async def collect(config: CanaryConfig) -> list[CanaryAlert]:
     if proc.returncode != 0 or not stdout:
         return []
 
-    alerts = [
-        alert
+    events = [
+        event
         for line in stdout.decode(errors="ignore").splitlines()
-        if (alert := _parse_alert(line)) is not None
+        if (event := _parse_event(line)) is not None
     ]
-    alerts.sort(key=lambda a: a.utc_time, reverse=True)
-    return alerts
+    events.sort(key=lambda e: e.ts, reverse=True)
+    return events

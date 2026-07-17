@@ -72,18 +72,42 @@ class PortScanResult:
 
 
 @dataclass(frozen=True)
-class CanaryAlert:
-    """A single real interaction with an OpenCanary honeypot service —
-    someone (or something) touched a decoy, this is not a heuristic.
+class SecurityEvent:
+    """One entry in the unified security log — either a real interaction
+    with an OpenCanary honeypot service, or a network change (new device,
+    a previously-closed port opening). Not a heuristic in either case: this
+    is something that was actually observed, not a risk score.
     """
 
-    utc_time: str
+    ts: str  # UTC timestamp string
+    source: str  # "canary" | "network"
+    event_type: str  # "credential_attempt" | "http_probe" | "connection" | "new_device" | "device_returned" | "new_port"
+    severity: str  # "high" | "medium" | "low"
+    target: str  # src host (canary) or device ip (network)
     service: str
-    src_host: str
-    dst_port: int
     summary: str
+    detail: dict = field(default_factory=dict)
+    status: str = "new"  # "new" | "acknowledged"
 
     @property
-    def key(self) -> tuple[str, str, int, str]:
-        """Stable-enough identity for de-duplication and "is this new" checks."""
-        return (self.utc_time, self.src_host, self.dst_port, self.summary)
+    def key(self) -> str:
+        """Stable-enough identity for de-duplication and SQLite storage."""
+        return f"{self.source}:{self.event_type}:{self.ts}:{self.target}:{self.service}:{self.summary}"
+
+
+@dataclass(frozen=True)
+class SocStats:
+    """Rollup stats over the persisted event history."""
+
+    total: int
+    unacknowledged: int
+    count_24h: int
+    count_7d: int
+    # Open (unacknowledged) counts by severity — what still needs a look,
+    # not just a lifetime total.
+    open_high: int = 0
+    open_medium: int = 0
+    open_low: int = 0
+    last_event_ts: str | None = None
+    top_sources: list[tuple[str, int]] = field(default_factory=list)
+    top_services: list[tuple[str, int]] = field(default_factory=list)

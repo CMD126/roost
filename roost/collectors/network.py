@@ -9,7 +9,7 @@ import asyncio
 import ipaddress
 import socket
 
-from mac_vendor_lookup import AsyncMacLookup, VendorNotFoundError
+from mac_vendor_lookup import AsyncMacLookup
 
 from ..config import NetworkConfig
 from ..models import NetworkDevice
@@ -34,7 +34,13 @@ async def _vendor_for(mac: str | None) -> str | None:
         return None
     try:
         return await _mac_lookup.lookup(mac)
-    except VendorNotFoundError:
+    except Exception:
+        # Covers both VendorNotFoundError (mac not in the local OUI db) and,
+        # on first run or a stale cache, the library transparently trying to
+        # fetch a fresh vendor list from the IEEE over the network — which
+        # can fail outright on a LAN with no outbound internet access. This
+        # is optional enrichment either way: degrade to unknown, never crash
+        # the whole app over a vendor name.
         return None
 
 

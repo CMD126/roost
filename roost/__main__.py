@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .app import run
+from .config import ConfigError
 
 
 def main() -> None:
@@ -16,7 +18,11 @@ def main() -> None:
         help="Path to config.yaml (default: ./config.yaml)",
     )
     args = parser.parse_args()
-    run(config_path=args.config)
+    try:
+        run(config_path=args.config)
+    except ConfigError as exc:
+        print(f"roost: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

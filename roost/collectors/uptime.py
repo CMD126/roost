@@ -26,7 +26,12 @@ async def _check_http(target: UptimeTarget, timeout: float) -> UptimeResult:
             latency_ms=latency_ms,
             detail=f"HTTP {response.status_code}",
         )
-    except httpx.HTTPError as exc:
+    except Exception as exc:
+        # Deliberately broader than httpx.HTTPError: a malformed url in a
+        # target's config (e.g. a typo'd port) raises httpx.InvalidURL,
+        # which subclasses Exception directly, not HTTPError — a config
+        # typo on one target should mark that target down, not crash the
+        # whole app via the asyncio.gather() in collect() below.
         return UptimeResult(
             name=target.name,
             address=target.url,

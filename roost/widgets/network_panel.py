@@ -41,6 +41,7 @@ class NetworkPanel(Vertical):
         super().__init__(*args, **kwargs)
         self._devices: list[NetworkDevice] = []
         self._portscan_results: dict[str, PortScanResult] = {}
+        self._new_ips: set[str] = set()
 
     def compose(self):
         yield Static("NETWORK", classes="panel-title")
@@ -54,16 +55,20 @@ class NetworkPanel(Vertical):
 
     def on_mount(self) -> None:
         table = self.query_one("#network-table", DataTable)
-        table.add_columns("IP", "Name", "Vendor", "Latency", "Exposure")
+        table.add_columns("New", "IP", "Name", "Vendor", "Latency", "Exposure")
         table.cursor_type = "row"
 
     def update_data(
         self,
         devices: list[NetworkDevice],
         portscan_results: dict[str, PortScanResult] | None = None,
+        new_ips: set[str] | None = None,
     ) -> None:
         self._devices = devices
         self._portscan_results = portscan_results or {}
+        # Only flags devices new in *this* scan cycle — the persistent
+        # history/detail view for these lives in the Security Events panel.
+        self._new_ips = new_ips or set()
 
         summary = self.query_one("#network-summary", Static)
         table = self.query_one("#network-table", DataTable)
@@ -78,11 +83,12 @@ class NetworkPanel(Vertical):
 
         table.clear()
         for d in devices:
+            marker = "[red]●[/]" if d.ip in self._new_ips else ""
             latency = f"{d.latency_ms:.0f} ms" if d.latency_ms is not None else "—"
             name = d.hostname or d.vendor or "—"
             vendor = d.vendor or "—"
             exposure = _format_exposure_badge(self._portscan_results.get(d.ip))
-            table.add_row(d.ip, name, vendor, latency, exposure, key=d.ip)
+            table.add_row(marker, d.ip, name, vendor, latency, exposure, key=d.ip)
 
         if previously_selected is not None:
             self._select_row_by_ip(previously_selected)

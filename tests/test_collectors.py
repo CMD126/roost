@@ -1,9 +1,11 @@
 import asyncio
 
+from docker.errors import ImageNotFound
+
 from roost.collectors import docker_containers, host, network, opencanary, portscan, uptime
 from roost.collectors._arp import get_mac
 from roost.collectors._ping import ping
-from roost.collectors.opencanary import _parse_alert
+from roost.collectors.opencanary import _parse_event
 from roost.config import (
     CanaryConfig,
     DockerConfig,
@@ -40,10 +42,104 @@ async def test_host_collect_disabled_returns_none():
     assert await host.collect(HostConfig(enabled=False)) is None
 
 
+async def test_host_collect_swallows_psutil_failure_instead_of_crashing(monkeypatch):
+    # A restricted/sandboxed host can make psutil raise OSError (denied
+    # /proc access, missing disk mount, ...) — this must degrade to None,
+    # not propagate through the asyncio.gather() in _refresh_fast() and
+    # take Docker/Uptime's results down with it for that cycle.
+    def raise_oserror(*args, **kwargs):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(host.psutil, "virtual_memory", raise_oserror)
+    assert await host.collect(HostConfig(enabled=True)) is None
+
+
 async def test_docker_collect_disabled_reports_unavailable():
     snapshot = await docker_containers.collect(DockerConfig(enabled=False))
     assert snapshot.available is False
     assert snapshot.containers == []
+
+
+async def test_docker_collect_unreachable_ssh_host_reports_unavailable_instead_of_crashing():
+    # Port 1 on loopback is closed, so paramiko's own socket.connect() raises
+    # a plain OSError before docker-py gets a chance to wrap it as a
+    # DockerException — this must be caught, not left to crash the app.
+    config = DockerConfig(enabled=True, host="ssh://nobody@127.0.0.1:1")
+    snapshot = await docker_containers.collect(config)
+    assert snapshot.available is False
+    assert snapshot.error
+
+
+async def test_docker_collect_bad_ssh_banner_reports_unavailable_instead_of_crashing():
+    # A real listener that isn't actually SSH (e.g. something else bound to
+    # that port, or a middlebox that intercepts the connection) makes
+    # paramiko raise its own SSHException — a different hierarchy entirely
+    # from OSError/DockerException — while reading the protocol banner.
+    # This must degrade gracefully too, exactly like the closed-port case.
+    async def handle(reader, writer):
+        writer.write(b"Not allowed at this time\r\n")
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+
+    async with server:
+        config = DockerConfig(enabled=True, host=f"ssh://nobody@127.0.0.1:{port}")
+        snapshot = await docker_containers.collect(config)
+
+    assert snapshot.available is False
+    assert snapshot.error
+
+
+class _FakeContainer:
+    """Enough of docker-py's Container surface to drive _collect_sync: real
+    attribute access (name, status), a .image property that raises exactly
+    like docker-py's does when the backing image was removed later (e.g.
+    `docker image prune`) while the container itself still exists.
+    """
+
+    def __init__(self, name: str, status: str) -> None:
+        self.name = name
+        self.status = status
+
+    @property
+    def image(self):
+        raise ImageNotFound("no such image: sha256:deadbeef")
+
+
+class _FakeContainerCollection:
+    def __init__(self, containers: list[_FakeContainer]) -> None:
+        self._containers = containers
+
+    def list(self, all=True):
+        return self._containers
+
+
+class _FakeDockerClient:
+    def __init__(self, containers: list[_FakeContainer]) -> None:
+        self.containers = _FakeContainerCollection(containers)
+
+    def ping(self) -> bool:
+        return True
+
+    def close(self) -> None:
+        pass
+
+
+async def test_docker_collect_one_container_with_missing_image_does_not_fail_whole_snapshot(monkeypatch):
+    # A dangling image reference on one container must degrade that
+    # container's image field, not abort the whole containers.list() loop
+    # and report the entire panel unavailable.
+    fake_client = _FakeDockerClient([_FakeContainer(name="stale-app", status="exited")])
+    monkeypatch.setattr(docker_containers.docker, "from_env", lambda: fake_client)
+
+    snapshot = await docker_containers.collect(DockerConfig(enabled=True))
+
+    assert snapshot.available is True
+    assert len(snapshot.containers) == 1
+    assert snapshot.containers[0].name == "stale-app"
+    assert snapshot.containers[0].image == "unknown"
 
 
 async def test_uptime_collect_tcp_closed_port_is_down():
@@ -55,6 +151,17 @@ async def test_uptime_collect_tcp_closed_port_is_down():
 
 async def test_uptime_collect_empty_targets_returns_empty_list():
     assert await uptime.collect(UptimeConfig(enabled=True, targets=[])) == []
+
+
+async def test_uptime_collect_http_bad_url_reports_down_instead_of_crashing():
+    # httpx.InvalidURL (e.g. from a typo'd port) subclasses Exception
+    # directly, not httpx.HTTPError — a config typo on one target must mark
+    # that target down, not crash the whole app via collect()'s gather().
+    target = UptimeTarget(name="bad-port", type="http", url="http://127.0.0.1:notaport")
+    results = await uptime.collect(UptimeConfig(enabled=True, timeout=1.0, targets=[target]))
+    assert len(results) == 1
+    assert results[0].up is False
+    assert results[0].detail == "InvalidURL"
 
 
 async def test_network_collect_loopback_range_finds_self():
@@ -81,6 +188,19 @@ async def test_vendor_lookup_known_oui():
 
 async def test_vendor_lookup_none_mac_returns_none():
     assert await network._vendor_for(None) is None
+
+
+async def test_vendor_lookup_swallows_any_lookup_failure_not_just_not_found(monkeypatch):
+    # On first run or a stale cache, mac_vendor_lookup transparently tries
+    # to fetch a fresh vendor list over the network — which can fail with
+    # connection errors unrelated to VendorNotFoundError on a LAN with no
+    # outbound internet. Vendor is optional enrichment either way: any
+    # failure here must degrade to None, not crash the whole app.
+    async def raise_connection_error(mac):
+        raise OSError("network unreachable")
+
+    monkeypatch.setattr(network._mac_lookup, "lookup", raise_connection_error)
+    assert await network._vendor_for("aa:bb:cc:dd:ee:ff") is None
 
 
 async def test_get_mac_never_raises_for_address_with_no_arp_entry():
@@ -142,36 +262,54 @@ _CANARY_FTP_LOGIN_LINE = (
 )
 
 
-def test_parse_alert_skips_housekeeping_lines():
-    assert _parse_alert(_CANARY_STARTUP_LINE) is None
+def test_parse_event_skips_housekeeping_lines():
+    assert _parse_event(_CANARY_STARTUP_LINE) is None
 
 
-def test_parse_alert_skips_invalid_json():
-    assert _parse_alert("not json") is None
+def test_parse_event_skips_invalid_json():
+    assert _parse_event("not json") is None
 
 
-def test_parse_alert_extracts_real_login_attempt():
-    alert = _parse_alert(_CANARY_FTP_LOGIN_LINE)
+def test_parse_event_extracts_real_login_attempt_as_high_severity():
+    event = _parse_event(_CANARY_FTP_LOGIN_LINE)
 
-    assert alert is not None
-    assert alert.src_host == "192.168.1.50"
-    assert alert.dst_port == 21
-    assert alert.service == "ftp"
-    assert alert.summary == "login attempt: ola/ola"
-    assert alert.utc_time == "2026-06-29 20:53:04.889015"
+    assert event is not None
+    assert event.source == "canary"
+    assert event.event_type == "credential_attempt"
+    assert event.severity == "high"
+    assert event.target == "192.168.1.50"
+    assert event.service == "ftp"
+    assert event.summary == "login attempt: ola/ola"
+    assert event.ts == "2026-06-29 20:53:04.889015"
+    assert event.detail["dst_port"] == 21
 
 
-def test_parse_alert_formats_http_path():
+def test_parse_event_formats_http_path_as_medium_severity():
     line = (
         '{"dst_host": "192.168.1.10", "dst_port": 80, '
         '"logdata": {"PATH": "/admin/login.php"}, "logtype": 3000, '
         '"src_host": "203.0.113.7", "utc_time": "2026-07-01 10:00:00"}'
     )
-    alert = _parse_alert(line)
+    event = _parse_event(line)
 
-    assert alert is not None
-    assert alert.service == "http"
-    assert alert.summary == "GET /admin/login.php"
+    assert event is not None
+    assert event.event_type == "http_probe"
+    assert event.severity == "medium"
+    assert event.service == "http"
+    assert event.summary == "GET /admin/login.php"
+
+
+def test_parse_event_bare_connection_is_low_severity():
+    line = (
+        '{"dst_host": "192.168.1.10", "dst_port": 22, "logdata": {}, '
+        '"logtype": 4000, "src_host": "203.0.113.7", "utc_time": "2026-07-01 10:00:00"}'
+    )
+    event = _parse_event(line)
+
+    assert event is not None
+    assert event.event_type == "connection"
+    assert event.severity == "low"
+    assert event.summary == "connection"
 
 
 async def test_opencanary_collect_disabled_returns_empty_list():

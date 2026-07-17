@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from roost.config import load_config
+import pytest
+
+from roost.config import ConfigError, load_config
 
 
 def test_load_config_missing_file_returns_defaults(tmp_path: Path):
@@ -137,3 +139,60 @@ canary:
     assert config.canary.log_path == "/custom/path.log"
     assert config.canary.tail_lines == 50
     assert config.canary.interval == 15
+
+
+def test_load_config_malformed_yaml_raises_config_error_not_raw_traceback(tmp_path: Path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("docker:\n  enabled: [true\n", encoding="utf-8")  # unclosed bracket
+
+    with pytest.raises(ConfigError, match="not valid YAML"):
+        load_config(config_file)
+
+
+def test_load_config_uptime_target_missing_name_raises_config_error(tmp_path: Path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+uptime:
+  targets:
+    - type: tcp
+      address: 192.168.1.1
+      port: 80
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="missing required field 'name'"):
+        load_config(config_file)
+
+
+def test_load_config_uptime_target_missing_type_raises_config_error(tmp_path: Path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+uptime:
+  targets:
+    - name: Router
+      address: 192.168.1.1
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="missing required field 'type'"):
+        load_config(config_file)
+
+
+def test_load_config_wrong_shaped_section_raises_config_error(tmp_path: Path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("docker: true\n", encoding="utf-8")  # should be a mapping
+
+    with pytest.raises(ConfigError, match="invalid or incomplete section"):
+        load_config(config_file)
+
+
+def test_load_config_non_mapping_top_level_raises_config_error(tmp_path: Path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("- just\n- a\n- list\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="YAML mapping"):
+        load_config(config_file)
