@@ -67,20 +67,27 @@ def _read_temperature_c() -> float | None:
     return None
 
 
-def _collect_sync() -> HostMetrics:
-    mem = psutil.virtual_memory()
-    disk = psutil.disk_usage("/")
-    return HostMetrics(
-        cpu_percent=psutil.cpu_percent(interval=0.3),
-        mem_percent=mem.percent,
-        mem_used_gb=mem.used / _GB,
-        mem_total_gb=mem.total / _GB,
-        disk_percent=disk.percent,
-        disk_used_gb=disk.used / _GB,
-        disk_total_gb=disk.total / _GB,
-        uptime_seconds=time.time() - psutil.boot_time(),
-        temperature_c=_read_temperature_c(),
-    )
+def _collect_sync() -> HostMetrics | None:
+    try:
+        mem = psutil.virtual_memory()
+        disk = psutil.disk_usage("/")
+        return HostMetrics(
+            cpu_percent=psutil.cpu_percent(interval=0.3),
+            mem_percent=mem.percent,
+            mem_used_gb=mem.used / _GB,
+            mem_total_gb=mem.total / _GB,
+            disk_percent=disk.percent,
+            disk_used_gb=disk.used / _GB,
+            disk_total_gb=disk.total / _GB,
+            uptime_seconds=time.time() - psutil.boot_time(),
+            temperature_c=_read_temperature_c(),
+        )
+    except OSError:
+        # A restricted/sandboxed host (denied /proc access, a missing disk
+        # mount, ...) can make these calls fail. _refresh_fast() gathers this
+        # alongside Docker and Uptime — one psutil failure must degrade to
+        # "unavailable" for this cycle, not abort the other two collectors.
+        return None
 
 
 async def _collect_remote(remote: RemoteHostConfig) -> HostMetrics | None:

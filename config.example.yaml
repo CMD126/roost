@@ -4,6 +4,16 @@
 # Default refresh interval (seconds) for containers, host metrics and uptime checks.
 refresh_interval: 5
 
+# SQLite file backing the Security Events panel's history and triage state
+# (acknowledged/new), resolved relative to this config file's directory.
+# Gitignored, same as config.yaml — it's local runtime state.
+events_db: "roost_events.db"
+
+# Mouse support (click a row to open it) — on by default. Only turn this off
+# on a legacy Windows console (conhost.exe, not Windows Terminal) that leaks
+# raw mouse escape sequences as visible text instead of consuming them.
+mouse: true
+
 docker:
   enabled: true
   # Leave null to use the environment default (DOCKER_HOST env var, or the
@@ -70,6 +80,8 @@ network:
 # only turn this on once you've actually deployed a canary somewhere.
 # A line counts as a real alert (not internal housekeeping) when it has a
 # non-empty src_host — i.e. something actually connected to a decoy service.
+# Canary hits land in the Security Events panel alongside network changes
+# (new devices, newly-opened ports) — one triage-able, persistent log.
 canary:
   enabled: false
   ssh_target: "user@192.168.1.10"

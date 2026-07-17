@@ -41,7 +41,15 @@ def _collect_sync(config: DockerConfig) -> DockerSnapshot:
             else docker.from_env()
         )
         client.ping()
-    except DockerException as exc:
+    except Exception as exc:
+        # A remote docker.host (ssh:// or tcp://) can fail below docker-py's
+        # own exception layer in ways that aren't a DockerException at all —
+        # a plain OSError from the raw socket (connection refused, blocked
+        # by a firewall), or paramiko's own SSHException hierarchy (bad
+        # banner, auth failure, protocol negotiation failure). Trying to
+        # enumerate every exception type a remote transport can leak is a
+        # losing game — this boundary is documented to degrade gracefully,
+        # never crash the app, so it catches broadly on purpose.
         return DockerSnapshot(available=False, error=str(exc))
 
     containers: list[ContainerInfo] = []
@@ -62,17 +70,26 @@ def _collect_sync(config: DockerConfig) -> DockerSnapshot:
                 except DockerException:
                     pass
 
+            try:
+                image = c.image.tags[0] if c.image.tags else c.image.short_id
+            except DockerException:
+                # The image backing a container can be removed later (e.g.
+                # `docker image prune`) while the container itself still
+                # exists — one container's dangling image reference shouldn't
+                # take down the whole panel, just that one field.
+                image = "unknown"
+
             containers.append(
                 ContainerInfo(
                     name=c.name,
                     status=c.status,
-                    image=(c.image.tags[0] if c.image.tags else c.image.short_id),
+                    image=image,
                     cpu_percent=cpu_pct,
                     mem_usage_mb=mem_used_mb,
                     mem_limit_mb=mem_limit_mb,
                 )
             )
-    except DockerException as exc:
+    except Exception as exc:
         return DockerSnapshot(available=False, error=str(exc))
     finally:
         client.close()
