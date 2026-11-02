@@ -1,4 +1,9 @@
 import asyncio
+import platform
+import shutil
+import subprocess
+
+import pytest
 
 from docker.errors import ImageNotFound
 
@@ -17,6 +22,25 @@ from roost.config import (
 )
 
 
+def _icmp_available() -> bool:
+    """True if the system ping binary can reach 127.0.0.1 (not the case in
+    many containers / restricted CI runners: no binary, or no ICMP perms)."""
+    if shutil.which("ping") is None:
+        return False
+    count_flag = "-n" if platform.system() == "Windows" else "-c"
+    try:
+        return subprocess.run(
+            ["ping", count_flag, "1", "127.0.0.1"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+        ).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+requires_icmp = pytest.mark.skipif(not _icmp_available(), reason="ICMP ping to 127.0.0.1 unavailable")
+
+
+@requires_icmp
 async def test_ping_loopback_succeeds():
     latency = await ping("127.0.0.1", timeout=2.0)
     assert latency is not None
@@ -164,6 +188,7 @@ async def test_uptime_collect_http_bad_url_reports_down_instead_of_crashing():
     assert results[0].detail == "InvalidURL"
 
 
+@requires_icmp
 async def test_network_collect_loopback_range_finds_self():
     devices = await network.collect(NetworkConfig(enabled=True, cidr="127.0.0.0/30", timeout=1.0))
     assert any(d.ip == "127.0.0.1" for d in devices)
@@ -173,6 +198,7 @@ async def test_network_collect_no_cidr_returns_empty_list():
     assert await network.collect(NetworkConfig(enabled=True, cidr="")) == []
 
 
+@requires_icmp
 async def test_network_collect_enriches_loopback_with_mac_or_none():
     # No assertion on the value itself (loopback has no ARP entry, a real LAN
     # host would), just that enrichment never raises and the field exists.
