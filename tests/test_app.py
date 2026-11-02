@@ -4,7 +4,9 @@ import pytest
 from textual.widgets import DataTable, TabbedContent
 
 from roost.app import HomelabDashboard, run
+from roost.collectors import network, portscan
 from roost.config import AppConfig, ConfigError, NetworkConfig, UptimeConfig, UptimeTarget
+from roost.models import NetworkDevice
 from roost.widgets.containers_panel import ContainersPanel
 from roost.widgets.event_detail import EventDetailScreen
 from roost.widgets.host_panel import HostPanel
@@ -55,12 +57,24 @@ async def test_missing_config_sets_fallback_subtitle(tmp_path):
         assert "nonexistent.yaml" in app.sub_title
 
 
-async def test_security_table_single_click_opens_exactly_one_modal(tmp_path):
+async def test_security_table_single_click_opens_exactly_one_modal(tmp_path, monkeypatch):
     # Regression test: Textual's message dispatch invokes _on_click from
     # every class in the MRO, not just the most-derived override, so a
     # naive ClickToSelectDataTable that both moves the cursor *and* posts
     # its own RowSelected caused DataTable's own _on_click to post a second
     # one right behind it — one click silently stacked two modal screens.
+    #
+    # The table needs at least one row to click on. Seed it with a fake
+    # "new device" discovery rather than a real ICMP sweep of loopback,
+    # which silently finds nothing on hosts/CI runners without ping.
+    async def fake_network_collect(_config):
+        return [NetworkDevice(ip="127.0.0.1", hostname="localhost", latency_ms=0.1)]
+
+    async def fake_scan_hosts(_ips, _config):
+        return {}
+
+    monkeypatch.setattr(network, "collect", fake_network_collect)
+    monkeypatch.setattr(portscan, "scan_hosts", fake_scan_hosts)
     config = _fast_test_config(str(tmp_path / "events.db"))
     app = HomelabDashboard(config=config, config_path=Path("nonexistent.yaml"))
     async with app.run_test(size=(140, 50)) as pilot:
