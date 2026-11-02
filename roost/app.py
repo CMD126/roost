@@ -162,7 +162,7 @@ class HomelabDashboard(App):
         _silence_proactor_connection_reset(asyncio.get_running_loop())
 
         if not self.config_path.exists():
-            self.sub_title = f"no {self.config_path.name} found — using defaults"
+            self.sub_title = f"no {self.config_path.name} found, using defaults"
 
         self._focus_tab_content("tab-security")
         self.set_interval(self.config.refresh_interval, self._trigger_fast_refresh)

@@ -24,7 +24,7 @@ class ContainersPanel(Vertical):
         table = self.query_one("#containers-table", DataTable)
 
         if not snapshot.available:
-            summary.update(f"[red]Docker unavailable[/] — {snapshot.error or 'disabled'}")
+            summary.update(f"[red]Docker unavailable:[/] {snapshot.error or 'disabled'}")
             table.clear()
             return
 

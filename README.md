@@ -2,21 +2,21 @@
 
 A terminal dashboard for keeping an eye on a homelab: Docker containers, host
 resources, service uptime, and what's alive and exposed on the LAN. No
-browser, no agent to install on every box — just SSH in and run it.
+browser, no agent to install on every box. Just SSH in and run it.
 
-![Roost — Security Events tab, with demo data](docs/screenshot.svg)
+![Roost's Security Events tab, with demo data](docs/screenshot.svg)
 
-<sub>Demo data — device names, IPs and container list above are fictional, not a real deployment.</sub>
+<sub>Demo data: the device names, IPs and container list above are made up, not a real deployment.</sub>
 
 ## Features
 
-- **Containers** — status, CPU % and memory per container, via the Docker API. Local socket, or a remote daemon reached over SSH (`ssh://user@host`) or `tcp://` (see [Security notes](#security-notes)).
-- **Host** — CPU, memory, disk and temperature. Of the machine running the dashboard by default, or of a remote machine reached over SSH — see `host.remote` in the config.
-- **Uptime** — a configurable list of services checked over HTTP, raw TCP connect, or ICMP ping.
-- **Network** — a ping sweep of a configured CIDR range, enriched with:
-  - **MAC address + vendor** (offline OUI lookup) — identifies a device even when it has no reverse DNS entry, which is most consumer/IoT gear.
-  - **Exposure scan** — TCP connect + banner grab against a curated list of commonly-exposed ports (SSH, HTTP(S), SMB, RDP, VNC, Redis, databases, ...). Ports that are historically common unauthenticated/legacy attack surface (telnet, SMB, RDP, VNC, rpcbind, Redis, Elasticsearch, MongoDB...) are flagged in red. **This is a connect + banner check, not a CVE scanner** — it tells you a door is open and roughly what's behind it, not whether it's currently vulnerable. The table stays compact (one badge per device); select a row to see the full port/banner breakdown below it.
-- **Security Events** — a unified, persistent triage queue combining two kinds of real signal (not heuristics): interactions with an [OpenCanary](https://github.com/thinkst/opencanary) honeypot tailed over SSH (a row means something actually connected to a decoy service and, say, tried a username/password), and network changes detected against the Network panel's history (a new device joins the LAN, or a previously-closed port opens on a known device). Each event is scored `high`/`medium`/`low` severity, survives restarts (SQLite, `events_db` in config), and shows a rollup of top source IPs/services, open-by-severity counts, and time since the last alert. Unacknowledged events lead the queue, most recent first within that — chronological, not weighted by severity. Click (or select + `Enter`) a row for the full raw detail in a popup; `a` acknowledges/triages, `h` hides acknowledged events. Canary tailing is off by default (`canary.enabled: false`) — there's nothing to show until you've deployed a canary somewhere; network change detection runs automatically whenever the Network panel is enabled.
+- **Containers:** status, CPU % and memory per container, via the Docker API. Local socket, or a remote daemon reached over SSH (`ssh://user@host`) or `tcp://` (see [Security notes](#security-notes)).
+- **Host:** CPU, memory, disk and temperature. By default this is the machine running the dashboard, but it can also be a remote machine reached over SSH (see `host.remote` in the config).
+- **Uptime:** a configurable list of services checked over HTTP, raw TCP connect, or ICMP ping.
+- **Network:** a ping sweep of a configured CIDR range, enriched with:
+  - **MAC address + vendor** (offline OUI lookup). Identifies a device even when it has no reverse DNS entry, which is most consumer/IoT gear.
+  - **Exposure scan:** TCP connect + banner grab against a curated list of commonly-exposed ports (SSH, HTTP(S), SMB, RDP, VNC, Redis, databases, ...). Ports that are historically common unauthenticated/legacy attack surface (telnet, SMB, RDP, VNC, rpcbind, Redis, Elasticsearch, MongoDB...) are flagged in red. **This is a connect + banner check, not a CVE scanner.** It tells you a door is open and roughly what's behind it, not whether it's currently vulnerable. The table stays compact (one badge per device); select a row to see the full port/banner breakdown below it.
+- **Security Events:** a persistent triage queue that combines two kinds of real signal (not heuristics): interactions with an [OpenCanary](https://github.com/thinkst/opencanary) honeypot tailed over SSH (a row means something actually connected to a decoy service and, say, tried a username/password), and network changes detected against the Network panel's history (a new device joins the LAN, or a previously-closed port opens on a known device). Each event is scored `high`/`medium`/`low` severity, survives restarts (SQLite, `events_db` in config), and shows a rollup of top source IPs/services, open-by-severity counts, and time since the last alert. Unacknowledged events lead the queue, most recent first within that (chronological, not weighted by severity). Click (or select + `Enter`) a row for the full raw detail in a popup; `a` acknowledges/triages, `h` hides acknowledged events. Canary tailing is off by default (`canary.enabled: false`), since there's nothing to show until you've deployed a canary somewhere; network change detection runs automatically whenever the Network panel is enabled.
 
 Each panel degrades gracefully: if Docker isn't reachable, or a config
 section is disabled, that panel says so instead of crashing the app.
@@ -25,21 +25,21 @@ section is disabled, that panel says so instead of crashing the app.
 
 This project actively probes hosts on your network (ping sweep, port
 connects, banner grabs). That's fine on infrastructure you own or are
-authorized to test — which is the only intended use. A few things worth
+authorized to test, and that's the only intended use. A few things worth
 knowing:
 
 - **Docker over SSH, not `tcp://`.** A plain `tcp://host:2375` exposes the
-  Docker API with no authentication to anyone on that network segment —
-  root-equivalent access to the host. Prefer `docker.host: "ssh://user@host"`,
+  Docker API with no authentication to anyone on that network segment,
+  which is root-equivalent access to the host. Prefer `docker.host: "ssh://user@host"`,
   which reuses your existing key-based SSH access and exposes nothing new.
 - **The exposure scan is noisy by nature.** It opens a TCP connection to every
   configured port on every live host, on an interval (`network.portscan.interval`,
   default 5 minutes). On someone else's network this would look like exactly
-  what it is — reconnaissance. Only point `network.cidr` at ranges you're
+  what it is: reconnaissance. Only point `network.cidr` at ranges you're
   authorized to scan.
 - **The "risky ports" list is a heuristic, not a verdict.** It flags ports
   that are *commonly* problematic when exposed (unauthenticated by default,
-  legacy cleartext protocols, common ransomware/worm entry points) — not
+  legacy cleartext protocols, common ransomware/worm entry points). It does not mean
   "this specific device is vulnerable." A flagged VNC port with a strong
   password is fine; an unflagged custom port could still be misconfigured.
 
@@ -60,11 +60,11 @@ pip install -e .
 
 ## Connecting to a remote host
 
-Three of the five panels — Docker (`docker.host: ssh://...`), Host
-(`host.remote`), and Alerts (`canary`) — reach a machine over SSH rather than
+Three of the five panels, Docker (`docker.host: ssh://...`), Host
+(`host.remote`) and Alerts (`canary`), reach a machine over SSH rather than
 inspecting the one Roost runs on. All three need **key-based, passwordless
-SSH** — Roost never prompts for a password, so a login that requires one will
-just silently fail/timeout. If you don't have that set up yet for your
+SSH**. Roost never prompts for a password, so a login that requires one will
+just silently fail or time out. If you don't have that set up yet for your
 target machine:
 
 ```bash
@@ -104,24 +104,24 @@ Copy the example config and point it at your own homelab:
 cp config.example.yaml config.yaml
 ```
 
-`config.yaml` is gitignored — it's the right place for internal IPs and
-hostnames, they never get committed. See the comments in
+`config.yaml` is gitignored, so it's the right place for internal IPs and
+hostnames. They never get committed. See the comments in
 [`config.example.yaml`](config.example.yaml) for every option:
 
-- `docker.host` — leave `null` for the local daemon, or `ssh://user@host` for a remote one (see [Security notes](#security-notes)).
-- `host.remote` — optional `{ssh_target, python}` to collect Host panel metrics from a remote machine over SSH instead of the local one.
-- `uptime.targets` — a list of `{name, type: http|tcp|ping, url|address, port}` entries.
-- `network.cidr` — the LAN range to sweep, e.g. `192.168.1.0/24`.
-- `network.portscan` — exposure scan settings: `enabled`, `interval`, `timeout`, `concurrency`, and an optional custom `ports` list.
-- `canary` — `{enabled, ssh_target, log_path, tail_lines, interval}` for OpenCanary tailing. A log line counts as a real alert (not internal housekeeping) when it has a non-empty `src_host`. Feeds into the Security Events panel.
-- `events_db` — SQLite file backing the Security Events panel's history and triage state, resolved relative to `config.yaml`'s directory. Defaults to `roost_events.db`, gitignored like `config.yaml`.
+- `docker.host`: leave `null` for the local daemon, or `ssh://user@host` for a remote one (see [Security notes](#security-notes)).
+- `host.remote`: optional `{ssh_target, python}` to collect Host panel metrics from a remote machine over SSH instead of the local one.
+- `uptime.targets`: a list of `{name, type: http|tcp|ping, url|address, port}` entries.
+- `network.cidr`: the LAN range to sweep, e.g. `192.168.1.0/24`.
+- `network.portscan`: exposure scan settings: `enabled`, `interval`, `timeout`, `concurrency`, and an optional custom `ports` list.
+- `canary`: `{enabled, ssh_target, log_path, tail_lines, interval}` for OpenCanary tailing. A log line counts as a real alert (not internal housekeeping) when it has a non-empty `src_host`. Feeds into the Security Events panel.
+- `events_db`: SQLite file backing the Security Events panel's history and triage state, resolved relative to `config.yaml`'s directory. Defaults to `roost_events.db`, gitignored like `config.yaml`.
 
 If `config.yaml` doesn't exist, the app still runs with built-in defaults
-(host metrics only) — useful for a first `git clone && run` sanity check.
+(host metrics only), which is handy for a first `git clone && run` sanity check.
 
 ### Setting up OpenCanary (if you don't have one yet)
 
-Roost doesn't run a honeypot itself — it just tails one over SSH. Check
+Roost doesn't run a honeypot itself. It just tails one over SSH. Check
 whether you already have it somewhere:
 
 ```bash
@@ -138,7 +138,7 @@ python3 -m venv ~/opencanary-env
 
 Edit the generated config to enable the services you want (`ftp.enabled`,
 `ssh.enabled`, `http.enabled`, ...), and pick ports that don't collide with
-anything real already running there — check with `sudo ss -tlnp` first.
+anything real already running there (check with `sudo ss -tlnp` first).
 
 Run it as a systemd service so it survives reboots:
 
@@ -163,7 +163,7 @@ WantedBy=multi-user.target
 **`Type=forking` is not optional.** `opencanaryd --start` launches the real
 daemon via an internal `sudo twistd ...` and then exits itself. Without
 `Type=forking` + `PIDFile`, systemd tracks the wrong process, sees it exit,
-and kills the whole cgroup a few seconds later — it'll show `active` for an
+and kills the whole cgroup a few seconds later. It'll show `active` for an
 instant and then crash-loop forever. Ask us how we know.
 
 Then:
@@ -191,29 +191,29 @@ roost -c /path/to/config.yaml
 python -m roost
 ```
 
-Each panel is its own full-height tab — Security Events, Network, Containers,
-Host, Uptime — rather than sharing a cramped grid, so a table actually has
+Each panel (Security Events, Network, Containers, Host, Uptime) is its own
+full-height tab rather than sharing a cramped grid, so a table actually has
 room to show more than a handful of rows at once. Security Events is a
 triage queue, not just a log: unacknowledged events lead, most recent first
 within that (chronological, not weighted by severity); acknowledged events
 sink to the bottom.
 
-Keybindings: `1`–`5` jump straight to a tab (Security/Network/Containers/
+Keybindings: `1` to `5` jump straight to a tab (Security/Network/Containers/
 Host/Uptime) regardless of mouse or focus state; `r` refreshes immediately;
-`q` quits. `↑`/`↓` move through a table — on the Network panel, this also
+`q` quits. `↑`/`↓` move through a table. On the Network panel, this also
 updates the port/banner detail shown below it for whichever device is
 selected. On the Security Events panel: `Enter` (or a mouse click) opens the
 full detail for the selected event in a popup (`Esc` to close), `a`
 acknowledges/triages the selected event (from the table or from inside the
 popup), and `h` toggles hiding already-acknowledged events from the queue.
-Switching tabs — by number key, clicking a tab header, or the mouse — always
+Switching tabs (by number key, clicking a tab header, or the mouse) always
 moves keyboard focus into that tab's table, so `↑`/`↓` work immediately
 without an extra click first.
 
 Mouse support is on by default (click a row instead of navigating with the
 keyboard). Set `mouse: false` in `config.yaml` if you're stuck on a legacy
 Windows console (`conhost.exe`, not Windows Terminal) that leaks raw mouse
-escape sequences as visible text instead of consuming them — the same
+escape sequences as visible text instead of consuming them. The same
 console can also leak a stray `^[[I`/`^[[O` when the window gains or loses
 focus; switching to Windows Terminal resolves both.
 
@@ -225,7 +225,7 @@ pytest
 ```
 
 Tests cover the config loader, each collector (against real loopback/public
-targets and a real throwaway TCP server for the port scanner — no mocks),
+targets and a real throwaway TCP server for the port scanner, no mocks),
 and a headless run of the full Textual app via `App.run_test()`.
 
 ## Project structure
@@ -251,16 +251,16 @@ roost/
 ## Roadmap
 
 Built so far: asset inventory (MAC/vendor), exposure scanning, real honeypot
-alerts (OpenCanary), and a SOC-lite Security Events log — persistent history,
-severity + triage, network change detection, attacker/source rollup stats.
+alerts (OpenCanary), and a SOC-lite Security Events log with persistent history,
+severity + triage, network change detection and attacker/source rollup stats.
 Not yet built, in rough order of value:
 
-- **CVE correlation** — cross-reference banner-detected service versions against a vulnerability database, instead of just flagging ports by category.
+- **CVE correlation:** cross-reference banner-detected service versions against a vulnerability database, instead of just flagging ports by category.
 
 ## Acknowledgments
 
 The OpenCanary alerts panel was inspired by [Kat](https://github.com/rnbwkat)'s
-honeypot workshop at BSides Porto — that's what got me thinking about pairing
+honeypot workshop at BSides Porto. That's what got me thinking about pairing
 a homelab dashboard with real intrusion signals instead of just uptime checks.
 
 ## License

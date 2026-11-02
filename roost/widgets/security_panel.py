@@ -100,7 +100,7 @@ class SecurityPanel(Vertical):
             if stats.open_low:
                 severity_bits.append(f"[dim]{stats.open_low} LOW[/]")
             severity_summary = "   ".join(severity_bits) if severity_bits else "[green]clear[/]"
-            hidden_note = "   [dim](acknowledged hidden — h to show)[/]" if self._hide_acknowledged else ""
+            hidden_note = "   [dim](acknowledged hidden, press h to show)[/]" if self._hide_acknowledged else ""
             kpis.update(
                 f"{severity_summary}   ·   [bold]{stats.unacknowledged}[/] open / {stats.total} total"
                 f"   ·   last alert {_time_ago(stats.last_event_ts)}{hidden_note}"
