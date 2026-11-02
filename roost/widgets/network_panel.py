@@ -124,5 +124,5 @@ class NetworkPanel(Vertical):
 
         device = next((d for d in self._devices if d.ip == ip), None)
         label = device.hostname or device.vendor if device else None
-        header = f"[bold]{ip}[/]" + (f" — {label}" if label else "")
+        header = f"[bold]{ip}[/]" + (f" ({label})" if label else "")
         detail.update(f"{header}\n{_format_ports_detail(self._portscan_results.get(ip))}")
