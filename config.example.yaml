@@ -1,15 +1,15 @@
 # Copy this file to config.yaml and adjust to your homelab.
-# config.yaml is gitignored — it's fine to put internal IPs/hostnames in it.
+# config.yaml is gitignored, so it's fine to put internal IPs/hostnames in it.
 
 # Default refresh interval (seconds) for containers, host metrics and uptime checks.
 refresh_interval: 5
 
 # SQLite file backing the Security Events panel's history and triage state
 # (acknowledged/new), resolved relative to this config file's directory.
-# Gitignored, same as config.yaml — it's local runtime state.
+# Gitignored, same as config.yaml, since it's local runtime state.
 events_db: "roost_events.db"
 
-# Mouse support (click a row to open it) — on by default. Only turn this off
+# Mouse support (click a row to open it) is on by default. Only turn this off
 # on a legacy Windows console (conhost.exe, not Windows Terminal) that leaks
 # raw mouse escape sequences as visible text instead of consuming them.
 mouse: true
@@ -18,7 +18,7 @@ docker:
   enabled: true
   # Leave null to use the environment default (DOCKER_HOST env var, or the
   # local unix socket / npipe). To reach a remote daemon, prefer SSH over a
-  # plain tcp:// URL — the latter exposes the Docker API unauthenticated on
+  # plain tcp:// URL. The latter exposes the Docker API unauthenticated on
   # the network. Requires passwordless SSH (a key, not a password) and the
   # `paramiko` package (already a dependency of this project):
   #   host: "ssh://user@192.168.1.10"
@@ -28,7 +28,7 @@ host:
   enabled: true
   # Uncomment to collect CPU/RAM/disk/temperature from a remote machine over
   # SSH instead of the machine running the dashboard. `python` should point
-  # at an interpreter on the remote machine that has psutil installed — e.g.
+  # at an interpreter on the remote machine that has psutil installed, e.g.
   # the venv this project was deployed with, if you set it up there too.
   # remote:
   #   ssh_target: "user@192.168.1.10"
@@ -61,11 +61,11 @@ network:
   # Exposure scan: TCP connect + banner grab against a fixed port list, run
   # against every host the sweep above just found. Ports historically common
   # as unauthenticated/legacy attack surface (telnet, SMB, RDP, VNC, Redis,
-  # Elasticsearch, MongoDB, ...) are flagged in the UI — this is NOT a CVE
+  # Elasticsearch, MongoDB, ...) are flagged in the UI. This is NOT a CVE
   # scanner, just "this deserves a second look".
   portscan:
     enabled: true
-    # Runs less often than the ping sweep — it's much heavier (every host x
+    # Runs less often than the ping sweep because it's much heavier (every host x
     # every port). New devices still get an early first scan on discovery.
     interval: 300
     timeout: 1.5
@@ -75,20 +75,20 @@ network:
     # (ftp, ssh, telnet, http(s), smb, rdp, vnc, common databases, etc.):
     # ports: [22, 80, 443, 8080]
 
-# Alerts from an OpenCanary honeypot (https://github.com/thinkst/opencanary) —
+# Alerts from an OpenCanary honeypot (https://github.com/thinkst/opencanary),
 # or anything else that logs JSON lines with the same shape. Off by default:
 # only turn this on once you've actually deployed a canary somewhere.
 # A line counts as a real alert (not internal housekeeping) when it has a
-# non-empty src_host — i.e. something actually connected to a decoy service.
+# non-empty src_host, meaning something actually connected to a decoy service.
 # Canary hits land in the Security Events panel alongside network changes
-# (new devices, newly-opened ports) — one triage-able, persistent log.
+# (new devices, newly-opened ports) in one persistent log you can triage.
 canary:
   enabled: false
   ssh_target: "user@192.168.1.10"
   log_path: "/var/tmp/opencanary.log"
   # How many of the most recent log lines to pull each cycle. If the log is
   # full of old restart/housekeeping noise, real alerts can end up further
-  # back than this window — truncate the log after a fresh, stable start if
+  # back than this window. Truncate the log after a fresh, stable start if
   # that happens, rather than setting this arbitrarily high.
   tail_lines: 200
   interval: 30

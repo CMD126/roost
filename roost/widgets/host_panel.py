@@ -36,7 +36,7 @@ class HostPanel(Vertical):
         self._source_label = source_label
 
     def compose(self):
-        yield Static(f"HOST — {self._source_label}", classes="panel-title")
+        yield Static(f"HOST: {self._source_label}", classes="panel-title")
         yield _Meter("CPU", "cpu-bar")
         yield _Meter("Memory", "mem-bar")
         yield _Meter("Disk", "disk-bar")
