@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from rich.text import Text
 from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Static
 from textual.widgets.data_table import CellDoesNotExist, RowDoesNotExist
@@ -18,17 +19,23 @@ def _format_exposure_badge(result: PortScanResult | None) -> str:
     return f"[red]{total} open ({risky}⚠)[/]" if risky else f"{total} open"
 
 
-def _format_ports_detail(result: PortScanResult | None) -> str:
+def _format_ports_detail(result: PortScanResult | None) -> Text:
+    # Banners are whatever the remote service chose to send back, so they're
+    # untrusted input: build a Text object instead of a markup string, so a
+    # banner containing "[...]" can't restyle the UI or crash the renderer.
     if result is None:
-        return "[dim]Scanning…[/]"
+        return Text("Scanning…", style="dim")
     if not result.open_ports:
-        return "[dim]No open ports found.[/]"
-    lines = []
-    for p in result.open_ports:
-        marker = "[red]⚠[/]" if p.risky else " "
-        banner = f"  {p.banner}" if p.banner else ""
-        lines.append(f"{marker} {p.port}/{p.service}{banner}")
-    return "\n".join(lines)
+        return Text("No open ports found.", style="dim")
+    lines = Text()
+    for i, p in enumerate(result.open_ports):
+        if i:
+            lines.append("\n")
+        lines.append("⚠" if p.risky else " ", style="red" if p.risky else "")
+        lines.append(f" {p.port}/{p.service}")
+        if p.banner:
+            lines.append(f"  {p.banner}")
+    return lines
 
 
 class NetworkPanel(Vertical):
@@ -88,7 +95,9 @@ class NetworkPanel(Vertical):
             name = d.hostname or d.vendor or "—"
             vendor = d.vendor or "—"
             exposure = _format_exposure_badge(self._portscan_results.get(d.ip))
-            table.add_row(marker, d.ip, name, vendor, latency, exposure, key=d.ip)
+            # Hostname (reverse DNS) and vendor are not ours to trust either:
+            # anyone controlling a PTR record on the LAN chooses the hostname.
+            table.add_row(marker, d.ip, Text(name), Text(vendor), latency, exposure, key=d.ip)
 
         if previously_selected is not None:
             self._select_row_by_ip(previously_selected)
@@ -124,5 +133,7 @@ class NetworkPanel(Vertical):
 
         device = next((d for d in self._devices if d.ip == ip), None)
         label = device.hostname or device.vendor if device else None
-        header = f"[bold]{ip}[/]" + (f" ({label})" if label else "")
-        detail.update(f"{header}\n{_format_ports_detail(self._portscan_results.get(ip))}")
+        header = Text(ip, style="bold")
+        if label:
+            header.append(f" ({label})")
+        detail.update(Text.assemble(header, "\n", _format_ports_detail(self._portscan_results.get(ip))))

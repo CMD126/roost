@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from rich.text import Text
 from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Static
 from textual.widgets.data_table import CellDoesNotExist, RowDoesNotExist
@@ -108,7 +109,11 @@ class SecurityPanel(Vertical):
 
         top_src = ", ".join(f"{target} ({n})" for target, n in stats.top_sources) or "—"
         top_svc = ", ".join(f"{service} ({n})" for service, n in stats.top_services) or "—"
-        stats_line.update(f"[dim]Top sources:[/] {top_src}    [dim]Top services:[/] {top_svc}")
+        # Sources and services can originate from honeypot logs, i.e. from
+        # the attacker: plain Text, never markup (see the table rows below).
+        stats_line.update(Text.assemble(
+            ("Top sources: ", "dim"), top_src, "    ", ("Top services: ", "dim"), top_svc,
+        ))
 
         visible = [e for e in events if not (self._hide_acknowledged and e.status == "acknowledged")]
         self._events_by_key = {e.key: e for e in visible}
@@ -121,8 +126,13 @@ class SecurityPanel(Vertical):
             marker = "[red]● NEW[/]" if event.status == "new" else "[dim]✓[/]"
             time_label = event.ts.split(".")[0] or "—"
 
-            def cell(text: str) -> str:
-                return f"[{color}]{text}[/]" if color else text
+            # Every field here can be attacker-controlled (a honeypot login
+            # attempt's username/password ends up in the summary verbatim), so
+            # cells are Text objects: a username like "[/]" must render as
+            # those three characters, not be parsed as markup. Parsing it used
+            # to raise MarkupError at render time and take down the whole app.
+            def cell(text: str) -> Text:
+                return Text(text, style=color)
 
             table.add_row(
                 marker, cell(time_label), cell(event.severity), cell(event.target),

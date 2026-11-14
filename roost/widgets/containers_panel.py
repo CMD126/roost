@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from rich.text import Text
 from textual.containers import Vertical
 from textual.widgets import DataTable, Static
 
@@ -24,7 +25,9 @@ class ContainersPanel(Vertical):
         table = self.query_one("#containers-table", DataTable)
 
         if not snapshot.available:
-            summary.update(f"[red]Docker unavailable:[/] {snapshot.error or 'disabled'}")
+            # The error text comes from docker-py/paramiko/a remote daemon:
+            # render it as plain text, never parse it as markup.
+            summary.update(Text.assemble(("Docker unavailable: ", "red"), snapshot.error or "disabled"))
             table.clear()
             return
 
@@ -34,7 +37,7 @@ class ContainersPanel(Vertical):
 
         table.clear()
         for c in snapshot.containers:
-            status = f"[green]{c.status}[/]" if c.is_up else f"[red]{c.status}[/]"
+            status = Text(c.status, style="green" if c.is_up else "red")
             cpu = f"{c.cpu_percent:.1f}" if c.cpu_percent is not None else "—"
             mem = f"{c.mem_usage_mb:.0f}" if c.mem_usage_mb is not None else "—"
-            table.add_row(c.name, status, c.image, cpu, mem)
+            table.add_row(Text(c.name), status, Text(c.image), cpu, mem)

@@ -5,7 +5,7 @@ from textual.widgets import DataTable, TabbedContent
 
 from roost.app import HomelabDashboard, run
 from roost.collectors import network, portscan
-from roost.config import AppConfig, ConfigError, NetworkConfig, UptimeConfig, UptimeTarget
+from roost.config import AppConfig, ConfigError, DockerConfig, NetworkConfig, UptimeConfig, UptimeTarget
 from roost.models import NetworkDevice
 from roost.widgets.containers_panel import ContainersPanel
 from roost.widgets.event_detail import EventDetailScreen
@@ -182,3 +182,90 @@ def test_run_raises_config_error_for_unwritable_events_db(tmp_path):
 
     with pytest.raises(ConfigError, match="couldn't open events_db"):
         run(config_path=config_path)
+
+
+# Markup-looking strings an attacker fully controls: a username typed into a
+# honeypot login prompt, a service banner, a reverse-DNS name. Each one used
+# to be interpolated into a Rich/Textual markup string; "[/]" alone raised
+# MarkupError at render time and exited the whole dashboard.
+_HOSTILE_STRINGS = ["[/]", "[bold", "[link=http://evil.example]click[/link]", "[red]fake[/red]"]
+
+
+def _quiet_config(events_db: str) -> AppConfig:
+    """No background collector produces rows, so a test controls every one."""
+    return AppConfig(
+        events_db=events_db,
+        docker=DockerConfig(enabled=False),
+        uptime=UptimeConfig(enabled=False),
+        network=NetworkConfig(enabled=False),
+    )
+
+
+@pytest.mark.parametrize("hostile", _HOSTILE_STRINGS)
+async def test_hostile_honeypot_input_is_shown_verbatim_and_does_not_crash(tmp_path, monkeypatch, hostile):
+    from roost.collectors import opencanary
+    from roost.models import SecurityEvent
+
+    async def fake_canary_collect(_config):
+        return [SecurityEvent(
+            ts="2026-07-01 10:00:00.000000", source="canary", event_type="credential_attempt",
+            severity="high", target="203.0.113.7", service="ftp",
+            summary=f"login attempt: {hostile}/{hostile}", detail={"logdata": {"USERNAME": hostile}},
+        )]
+
+    monkeypatch.setattr(opencanary, "collect", fake_canary_collect)
+    config = _quiet_config(str(tmp_path / "events.db"))
+    app = HomelabDashboard(config=config, config_path=Path("nonexistent.yaml"))
+    async with app.run_test(size=(140, 40)) as pilot:
+        await app._refresh_canary()
+        await pilot.pause(0.3)
+
+        table = app.query_one(SecurityPanel).query_one("#security-table", DataTable)
+        assert table.row_count == 1
+        summary_cell = table.get_row_at(0)[-1]
+        assert str(summary_cell) == f"login attempt: {hostile}/{hostile}"
+
+        await pilot.press("enter")
+        await pilot.pause(0.3)
+        assert isinstance(app.screen, EventDetailScreen)
+        assert app.is_running
+    assert app._exception is None
+
+
+@pytest.mark.parametrize("hostile", _HOSTILE_STRINGS)
+async def test_hostile_banner_and_hostname_render_verbatim(tmp_path, monkeypatch, hostile):
+    from roost.models import OpenPort, PortScanResult
+
+    device = NetworkDevice(ip="192.168.1.20", hostname=hostile, latency_ms=1.0)
+    scan = {"192.168.1.20": PortScanResult(ip="192.168.1.20", open_ports=[
+        OpenPort(port=22, service="ssh", banner=hostile, risky=False),
+    ])}
+
+    async def fake_network_collect(_config):
+        return [device]
+
+    async def fake_scan_hosts(_ips, _config):
+        return scan
+
+    monkeypatch.setattr(network, "collect", fake_network_collect)
+    monkeypatch.setattr(portscan, "scan_hosts", fake_scan_hosts)
+    config = _fast_test_config(str(tmp_path / "events.db"))
+    app = HomelabDashboard(config=config, config_path=Path("nonexistent.yaml"))
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.press("2")
+        await app._refresh_network()
+        await app._refresh_portscan()
+        await pilot.pause(0.3)
+        panel = app.query_one(NetworkPanel)
+        # The table registers new rows on its next idle; redraw the detail
+        # once the cursor actually sits on the device row.
+        panel._update_detail()
+        await pilot.pause(0.1)
+
+        detail = str(panel.query_one("#network-detail").render())
+        assert f"192.168.1.20 ({hostile})" in detail
+        assert f"22/ssh  {hostile}" in detail
+        table = panel.query_one("#network-table", DataTable)
+        assert str(table.get_row_at(0)[2]) == hostile
+        assert app.is_running
+    assert app._exception is None

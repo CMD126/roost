@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from rich.text import Text
 from textual.containers import Vertical
 from textual.widgets import DataTable, Static
 
@@ -35,4 +36,4 @@ class UptimePanel(Vertical):
         for r in results:
             status = "[green]● up[/]" if r.up else "[red]● down[/]"
             latency = f"{r.latency_ms:.0f} ms" if r.latency_ms is not None else "—"
-            table.add_row(r.name, status, latency, r.detail)
+            table.add_row(Text(r.name), status, latency, Text(r.detail))

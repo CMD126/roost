@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from rich.text import Text
 from textual.containers import Vertical
 from textual.message import Message
 from textual.screen import ModalScreen
@@ -56,20 +57,22 @@ class EventDetailScreen(ModalScreen[None]):
     def compose(self):
         event = self._event
         color = _SEVERITY_COLOR.get(event.severity, "")
-        sev_label = f"[{color}]{event.severity.upper()}[/]" if color else event.severity.upper()
         detail_text = json.dumps(event.detail, indent=2)
 
-        body = (
-            f"[bold]{event.summary}[/]\n\n"
-            f"Time (UTC):  {event.ts}\n"
-            f"Source:      {event.source}\n"
-            f"Type:        {event.event_type}\n"
-            f"Severity:    {sev_label}\n"
-            f"Target:      {event.target}\n"
-            f"Service:     {event.service or '—'}\n"
-            f"Status:      {event.status}\n\n"
-            f"[dim]Raw detail:[/]\n{detail_text}\n\n"
-            f"[dim][a] acknowledge   [esc] close[/]"
+        # Built as a Text object, not a markup string: summary, target and the
+        # raw detail come straight from honeypot logs / network banners and
+        # must be shown verbatim (and must not be able to break rendering).
+        body = Text.assemble(
+            (event.summary, "bold"), "\n\n",
+            f"Time (UTC):  {event.ts}\n",
+            f"Source:      {event.source}\n",
+            f"Type:        {event.event_type}\n",
+            "Severity:    ", (event.severity.upper(), color), "\n",
+            f"Target:      {event.target}\n",
+            f"Service:     {event.service or '—'}\n",
+            f"Status:      {event.status}\n\n",
+            ("Raw detail:", "dim"), "\n", detail_text, "\n\n",
+            ("[a] acknowledge   [esc] close", "dim"),
         )
         box = Vertical(Static(body), id="event-detail-box")
         box.can_focus = True
