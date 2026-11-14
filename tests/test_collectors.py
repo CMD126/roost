@@ -5,7 +5,6 @@ import shutil
 import subprocess
 
 import pytest
-
 from docker.errors import ImageNotFound
 
 from roost.collectors import docker_containers, host, network, opencanary, portscan, uptime
@@ -41,6 +40,20 @@ def _icmp_available() -> bool:
 requires_icmp = pytest.mark.skipif(not _icmp_available(), reason="ICMP ping to 127.0.0.1 unavailable")
 
 
+def _icmp_replies_are_faked() -> bool:
+    """True when a TEST-NET-1 address, which can't exist on the internet,
+    still answers ping: some sandboxed/emulated networks reply to every
+    ICMP echo, which makes a "this host is down" assertion meaningless."""
+    if shutil.which("ping") is None:
+        return False
+    args = ["ping", "-n", "1", "-w", "500", "192.0.2.1"] if platform.system() == "Windows" \
+        else ["ping", "-c", "1", "-W", "1", "192.0.2.1"]
+    try:
+        return subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 @requires_icmp
 async def test_ping_loopback_succeeds():
     latency = await ping("127.0.0.1", timeout=2.0)
@@ -48,6 +61,7 @@ async def test_ping_loopback_succeeds():
     assert latency >= 0
 
 
+@pytest.mark.skipif(_icmp_replies_are_faked(), reason="this network answers ICMP for unroutable addresses")
 async def test_ping_unroutable_address_times_out():
     # TEST-NET-1, reserved for documentation: guaranteed not to respond.
     latency = await ping("192.0.2.1", timeout=0.5)

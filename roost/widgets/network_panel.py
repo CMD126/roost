@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from rich.text import Text
+from textual.containers import Vertical
 from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Static
 from textual.widgets.data_table import CellDoesNotExist, RowDoesNotExist
-from textual.containers import Vertical
 
 from ..models import NetworkDevice, PortScanResult
 

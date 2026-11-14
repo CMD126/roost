@@ -81,7 +81,9 @@ class SecurityEvent:
 
     ts: str  # UTC timestamp string
     source: str  # "canary" | "network"
-    event_type: str  # "credential_attempt" | "http_probe" | "connection" | "new_device" | "device_returned" | "new_port"
+    # "credential_attempt" | "http_probe" | "connection" (canary)
+    # "new_device" | "device_returned" | "new_port" (network)
+    event_type: str
     severity: str  # "high" | "medium" | "low"
     target: str  # src host (canary) or device ip (network)
     service: str

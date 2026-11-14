@@ -153,7 +153,9 @@ class SocStore:
                     target=device.ip, service="", summary=f"device returned to LAN: {label}", detail=detail,
                 ))
             else:
-                self._conn.execute("UPDATE known_devices SET last_seen = ?, ip = ? WHERE key = ?", (now, device.ip, key))
+                self._conn.execute(
+                    "UPDATE known_devices SET last_seen = ?, ip = ? WHERE key = ?", (now, device.ip, key)
+                )
 
         if seen_keys:
             placeholders = ",".join("?" * len(seen_keys))

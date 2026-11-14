@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from rich.text import Text
+from textual.containers import Vertical
 from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Static
 from textual.widgets.data_table import CellDoesNotExist, RowDoesNotExist
-from textual.containers import Vertical
 
 from ..models import SecurityEvent, SocStats
 from ._clickable_table import ClickToSelectDataTable
@@ -131,13 +131,8 @@ class SecurityPanel(Vertical):
             # cells are Text objects: a username like "[/]" must render as
             # those three characters, not be parsed as markup. Parsing it used
             # to raise MarkupError at render time and take down the whole app.
-            def cell(text: str) -> Text:
-                return Text(text, style=color)
-
-            table.add_row(
-                marker, cell(time_label), cell(event.severity), cell(event.target),
-                cell(event.event_type), cell(event.summary), key=event.key,
-            )
+            cells = (time_label, event.severity, event.target, event.event_type, event.summary)
+            table.add_row(marker, *(Text(text, style=color) for text in cells), key=event.key)
 
         if previously_selected is not None:
             self._select_row_by_key(previously_selected)
