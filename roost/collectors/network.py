@@ -11,7 +11,7 @@ import socket
 
 from mac_vendor_lookup import AsyncMacLookup
 
-from ..config import NetworkConfig
+from ..config import MAX_SWEEP_ADDRESSES, NetworkConfig
 from ..models import NetworkDevice
 from ._arp import get_mac
 from ._ping import ping
@@ -52,6 +52,13 @@ async def collect(config: NetworkConfig) -> list[NetworkDevice]:
         network = ipaddress.ip_network(config.cidr, strict=False)
     except ValueError:
         return []
+    # load_config() already rejects both of these with a clear message; this
+    # is the backstop for an AppConfig built some other way. One coroutine per
+    # address means a /8 would try to schedule ~16.7M of them.
+    if network.num_addresses > MAX_SWEEP_ADDRESSES:
+        return []
+    if not config.allow_public and not network.is_private:
+        return []
 
     semaphore = asyncio.Semaphore(max(config.concurrency, 1))
 
@@ -68,5 +75,7 @@ async def collect(config: NetworkConfig) -> list[NetworkDevice]:
 
     results = await asyncio.gather(*(probe(ip) for ip in network.hosts()))
     devices = [d for d in results if d is not None]
-    devices.sort(key=lambda d: tuple(int(part) for part in d.ip.split(".")))
+    # Numeric sort that also works for IPv6 (the old dotted-quad split
+    # raised ValueError on any "fe80::..." address).
+    devices.sort(key=lambda d: ipaddress.ip_address(d.ip))
     return devices

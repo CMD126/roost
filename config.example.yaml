@@ -51,8 +51,13 @@ uptime:
 
 network:
   enabled: true
-  # CIDR range to sweep for live hosts.
+  # CIDR range to sweep for live hosts. Must be a private, loopback or
+  # link-local range (RFC 1918, IPv6 ULA, ...) and at most a /16; anything
+  # else is refused at startup with an explanation.
   cidr: "192.168.1.0/24"
+  # Only set this if the range above is genuinely yours but not private
+  # address space (a public block you own, or 100.64.0.0/10 CGNAT/VPN space).
+  # allow_public: false
   scan_interval: 60
   timeout: 1.0
   # Max concurrent pings during a sweep.

@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shlex
 
 from ..config import CanaryConfig
 from ..models import SecurityEvent
+from ._text import printable
 from .portscan import SERVICE_NAMES
 
 
@@ -26,13 +28,13 @@ def _classify(logdata: dict) -> tuple[str, str, str]:
     no logdata at all is the least specific signal OpenCanary can produce.
     """
     if "USERNAME" in logdata or "PASSWORD" in logdata:
-        user = logdata.get("USERNAME", "?")
-        password = logdata.get("PASSWORD", "?")
+        user = printable(str(logdata.get("USERNAME", "?")))
+        password = printable(str(logdata.get("PASSWORD", "?")))
         return "credential_attempt", "high", f"login attempt: {user}/{password}"
     if "PATH" in logdata:
-        return "http_probe", "medium", f"GET {logdata['PATH']}"
+        return "http_probe", "medium", f"GET {printable(str(logdata['PATH']))}"
     if logdata:
-        return "http_probe", "medium", ", ".join(f"{k}={v}" for k, v in logdata.items())
+        return "http_probe", "medium", printable(", ".join(f"{k}={v}" for k, v in logdata.items()))
     return "connection", "low", "connection"
 
 
@@ -42,17 +44,22 @@ def _parse_event(line: str) -> SecurityEvent | None:
     except json.JSONDecodeError:
         return None
 
-    src_host = entry.get("src_host") or ""
+    if not isinstance(entry, dict):
+        return None  # valid JSON, but not an OpenCanary log record
+
+    src_host = printable(str(entry.get("src_host") or ""))
     if not src_host:
         return None  # housekeeping/startup line, not a real interaction
 
     dst_port = entry.get("dst_port", -1)
     logdata = entry.get("logdata") or {}
+    if not isinstance(logdata, dict):
+        logdata = {"raw": logdata}
     event_type, severity, summary = _classify(logdata)
     service = SERVICE_NAMES.get(dst_port, f"port {dst_port}")
 
     return SecurityEvent(
-        ts=entry.get("utc_time", ""),
+        ts=printable(str(entry.get("utc_time", ""))),
         source="canary",
         event_type=event_type,
         severity=severity,
@@ -75,7 +82,9 @@ async def collect(config: CanaryConfig) -> list[SecurityEvent]:
             "-o",
             "ConnectTimeout=5",
             config.ssh_target,
-            f"tail -n {config.tail_lines} {config.log_path}",
+            # ssh hands this string to the remote shell, so quote the path:
+            # a log_path with spaces or shell metacharacters must stay a path.
+            f"tail -n {int(config.tail_lines)} -- {shlex.quote(config.log_path)}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )

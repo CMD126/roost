@@ -11,6 +11,7 @@ import asyncio
 
 from ..config import PortScanConfig
 from ..models import OpenPort, PortScanResult
+from ._text import printable
 
 SERVICE_NAMES = {
     21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 53: "dns",
@@ -33,7 +34,7 @@ _HTTP_PORTS = {80, 443, 3000, 5000, 8000, 8080, 8443, 9000, 9090}
 async def _grab_banner(ip: str, port: int, timeout: float) -> str | None:
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(ip, port), timeout=timeout)
-    except (TimeoutError, OSError):
+    except (asyncio.TimeoutError, OSError):
         return None
 
     banner = None
@@ -48,13 +49,13 @@ async def _grab_banner(ip: str, port: int, timeout: float) -> str | None:
         if port in _HTTP_PORTS:
             for line in text.splitlines():
                 if line.lower().startswith("server:"):
-                    banner = line.split(":", 1)[1].strip()
+                    banner = printable(line.split(":", 1)[1], 80)
                     break
             if banner is None and text:
-                banner = text.splitlines()[0][:80]
+                banner = printable(text.splitlines()[0], 80)
         elif text:
-            banner = text.splitlines()[0][:80]
-    except (TimeoutError, OSError):
+            banner = printable(text.splitlines()[0], 80)
+    except (asyncio.TimeoutError, OSError):
         pass
     finally:
         writer.close()
@@ -63,7 +64,7 @@ async def _grab_banner(ip: str, port: int, timeout: float) -> str | None:
         except OSError:
             pass
 
-    return banner
+    return banner or None
 
 
 async def _scan_port(ip: str, port: int, timeout: float) -> OpenPort | None:
@@ -74,7 +75,7 @@ async def _scan_port(ip: str, port: int, timeout: float) -> OpenPort | None:
             await writer.wait_closed()
         except OSError:
             pass
-    except (TimeoutError, OSError):
+    except (asyncio.TimeoutError, OSError):
         return None
 
     banner = await _grab_banner(ip, port, timeout)

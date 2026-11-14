@@ -196,3 +196,57 @@ def test_load_config_non_mapping_top_level_raises_config_error(tmp_path: Path):
 
     with pytest.raises(ConfigError, match="YAML mapping"):
         load_config(config_file)
+
+
+def test_load_config_uptime_targets_all_commented_out_is_empty_not_an_error(tmp_path: Path):
+    path = tmp_path / "config.yaml"
+    path.write_text("uptime:\n  targets:\n  # - name: x\n", encoding="utf-8")
+
+    assert load_config(path).uptime.targets == []
+
+
+@pytest.mark.parametrize("cidr", ["192.168.1.0/24", "10.20.0.0/16", "127.0.0.0/30", "fd00::/120"])
+def test_load_config_accepts_private_scan_ranges(tmp_path: Path, cidr: str):
+    path = tmp_path / "config.yaml"
+    path.write_text(f"network:\n  cidr: '{cidr}'\n", encoding="utf-8")
+
+    assert load_config(path).network.cidr == cidr
+
+
+def test_load_config_refuses_public_scan_range_by_default(tmp_path: Path):
+    path = tmp_path / "config.yaml"
+    path.write_text("network:\n  cidr: '8.8.8.0/24'\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="allow_public"):
+        load_config(path)
+
+
+def test_load_config_public_scan_range_needs_explicit_opt_in(tmp_path: Path):
+    path = tmp_path / "config.yaml"
+    path.write_text("network:\n  cidr: '100.64.0.0/24'\n  allow_public: true\n", encoding="utf-8")
+
+    config = load_config(path)
+    assert config.network.allow_public is True
+
+
+def test_load_config_refuses_oversized_scan_range(tmp_path: Path):
+    path = tmp_path / "config.yaml"
+    path.write_text("network:\n  cidr: '10.0.0.0/8'\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="limited to"):
+        load_config(path)
+
+
+def test_load_config_refuses_invalid_cidr(tmp_path: Path):
+    path = tmp_path / "config.yaml"
+    path.write_text("network:\n  cidr: '192.168.1.0/33'\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="not a valid CIDR"):
+        load_config(path)
+
+
+def test_load_config_disabled_network_skips_cidr_validation(tmp_path: Path):
+    path = tmp_path / "config.yaml"
+    path.write_text("network:\n  enabled: false\n  cidr: '8.8.8.0/24'\n", encoding="utf-8")
+
+    assert load_config(path).network.enabled is False

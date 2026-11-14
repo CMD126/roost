@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import ipaddress
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
+
+# Largest range the ping sweep will accept: a /16 for IPv4. Anything bigger
+# is almost certainly a typo (10.0.0.0/8 instead of /24), and the sweep
+# schedules one probe per address.
+MAX_SWEEP_ADDRESSES = 65536
 
 
 class ConfigError(Exception):
@@ -56,6 +62,10 @@ class NetworkConfig:
     scan_interval: float = 60.0
     timeout: float = 1.0
     concurrency: int = 32
+    # Off by default: the sweep and exposure scan only accept private,
+    # loopback or link-local ranges (RFC 1918, ULA, ...). Scanning public
+    # address space you don't own is the main way to misuse this tool.
+    allow_public: bool = False
     portscan: PortScanConfig = field(default_factory=PortScanConfig)
 
 
@@ -138,7 +148,8 @@ def _parse_config(path: Path) -> AppConfig:
     network_raw = raw.get("network", {}) or {}
 
     targets = []
-    for i, t in enumerate(uptime_raw.get("targets", [])):
+    # `targets:` with every entry commented out parses as None, not [].
+    for i, t in enumerate(uptime_raw.get("targets") or []):
         for required in ("name", "type"):
             if required not in t:
                 raise ConfigError(
@@ -191,11 +202,36 @@ def _load_canary_config(canary_raw: dict) -> CanaryConfig:
     )
 
 
+def validate_scan_cidr(cidr: str, allow_public: bool = False) -> None:
+    """Raises ConfigError unless `cidr` is a range Roost is willing to sweep."""
+    try:
+        network = ipaddress.ip_network(cidr, strict=False)
+    except ValueError as exc:
+        raise ConfigError(f"network.cidr {cidr!r} is not a valid CIDR range ({exc})") from exc
+    if network.num_addresses > MAX_SWEEP_ADDRESSES:
+        raise ConfigError(
+            f"network.cidr {cidr!r} has {network.num_addresses:,} addresses; the sweep is "
+            f"limited to {MAX_SWEEP_ADDRESSES:,} (an IPv4 /16). Use a narrower range."
+        )
+    if not allow_public and not network.is_private:
+        raise ConfigError(
+            f"network.cidr {cidr!r} is not a private/loopback/link-local range. Roost only "
+            "scans networks you own; if this really is yours (e.g. a public block or "
+            "100.64.0.0/10 CGNAT/VPN space), set network.allow_public: true."
+        )
+
+
 def _load_network_config(network_raw: dict) -> NetworkConfig:
     portscan_raw = network_raw.get("portscan", {}) or {}
+    enabled = network_raw.get("enabled", True)
+    cidr = network_raw.get("cidr", "") or ""
+    allow_public = bool(network_raw.get("allow_public", False))
+    if enabled and cidr:
+        validate_scan_cidr(cidr, allow_public)
     return NetworkConfig(
-        enabled=network_raw.get("enabled", True),
-        cidr=network_raw.get("cidr", ""),
+        enabled=enabled,
+        cidr=cidr,
+        allow_public=allow_public,
         scan_interval=network_raw.get("scan_interval", 60.0),
         timeout=network_raw.get("timeout", 1.0),
         concurrency=network_raw.get("concurrency", 32),

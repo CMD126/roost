@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import platform
 import shutil
 import subprocess
@@ -344,3 +345,128 @@ async def test_opencanary_collect_disabled_returns_empty_list():
 
 async def test_opencanary_collect_no_ssh_target_returns_empty_list():
     assert await opencanary.collect(CanaryConfig(enabled=True, ssh_target="")) == []
+
+
+async def test_portscan_silent_service_is_open_with_no_banner():
+    # A service that waits for the client to speak first makes the banner
+    # read time out. On Python 3.10 that raises asyncio.TimeoutError, which
+    # is not the builtin TimeoutError there, so catching only the builtin let
+    # it escape and abort the whole scan instead of just this one banner.
+    async def handle(reader, writer):
+        await reader.read()  # never write anything; wait for the client to leave
+        writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+
+    async with server:
+        config = PortScanConfig(enabled=True, timeout=0.3, concurrency=8, ports=[port])
+        results = await portscan.scan_hosts(["127.0.0.1"], config)
+
+    open_ports = results["127.0.0.1"].open_ports
+    assert [p.port for p in open_ports] == [port]
+    assert open_ports[0].banner is None
+
+
+async def test_portscan_banner_control_characters_are_stripped():
+    async def handle(reader, writer):
+        writer.write(b"\x1b]0;pwned\x07SSH-2.0-Evil\x1b[2J\r\n")
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+
+    async with server:
+        config = PortScanConfig(enabled=True, timeout=1.0, concurrency=8, ports=[port])
+        results = await portscan.scan_hosts(["127.0.0.1"], config)
+
+    banner = results["127.0.0.1"].open_ports[0].banner
+    assert banner is not None
+    assert "\x1b" not in banner and "\x07" not in banner
+    assert "SSH-2.0-Evil" in banner
+
+
+async def test_network_collect_refuses_public_range_without_opt_in(monkeypatch):
+    probed = []
+
+    async def fake_ping(address, timeout):
+        probed.append(address)
+        return 1.0
+
+    monkeypatch.setattr(network, "ping", fake_ping)
+    assert await network.collect(NetworkConfig(enabled=True, cidr="8.8.8.0/30")) == []
+    assert probed == []
+
+
+async def test_network_collect_refuses_oversized_range(monkeypatch):
+    async def fake_ping(address, timeout):
+        raise AssertionError("an oversized range must not be swept at all")
+
+    monkeypatch.setattr(network, "ping", fake_ping)
+    assert await network.collect(NetworkConfig(enabled=True, cidr="10.0.0.0/8")) == []
+
+
+async def test_network_collect_sorts_ipv6_devices_numerically(monkeypatch):
+    # The old sort split addresses on "." and int()-ed each part, which
+    # raised ValueError for any IPv6 address and lost the whole sweep.
+    async def fake_ping(address, timeout):
+        return 1.0
+
+    async def no_value(_ip):
+        return None
+
+    monkeypatch.setattr(network, "ping", fake_ping)
+    monkeypatch.setattr(network, "get_mac", no_value)
+    monkeypatch.setattr(network, "_reverse_dns", no_value)
+    devices = await network.collect(NetworkConfig(enabled=True, cidr="fd00::8/125"))
+
+    ips = [d.ip for d in devices]
+    assert ips == sorted(ips, key=ipaddress.ip_address)
+    assert "fd00::9" in ips and "fd00::f" in ips
+
+
+def test_parse_event_skips_json_that_is_not_an_object():
+    assert _parse_event("[1, 2, 3]") is None
+    assert _parse_event('"just a string"') is None
+
+
+def test_parse_event_tolerates_non_object_logdata():
+    line = '{"src_host": "203.0.113.7", "dst_port": 22, "logdata": "oops", "utc_time": "2026-07-01 10:00:00"}'
+    event = _parse_event(line)
+
+    assert event is not None
+    assert event.detail["logdata"] == {"raw": "oops"}
+
+
+def test_parse_event_strips_control_characters_from_attacker_fields():
+    line = (
+        '{"src_host": "203.0.113.7", "dst_port": 21, "utc_time": "2026-07-01 10:00:00", '
+        '"logdata": {"USERNAME": "root\\u001b[2J", "PASSWORD": "x\\u0007"}}'
+    )
+    event = _parse_event(line)
+
+    assert event is not None
+    assert "\x1b" not in event.summary and "\x07" not in event.summary
+    assert event.summary.startswith("login attempt: root")
+
+
+async def test_opencanary_collect_quotes_log_path_for_remote_shell(monkeypatch):
+    captured = {}
+
+    class FakeProc:
+        returncode = 0
+
+        async def communicate(self):
+            return b"", b""
+
+    async def fake_exec(*args, **kwargs):
+        captured["args"] = args
+        return FakeProc()
+
+    monkeypatch.setattr(opencanary.asyncio, "create_subprocess_exec", fake_exec)
+    config = CanaryConfig(enabled=True, ssh_target="canary", log_path="/var/tmp/x.log; rm -rf ~", tail_lines=50)
+    assert await opencanary.collect(config) == []
+
+    remote_cmd = captured["args"][-1]
+    assert remote_cmd == "tail -n 50 -- '/var/tmp/x.log; rm -rf ~'"

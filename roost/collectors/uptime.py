@@ -57,7 +57,7 @@ async def _check_tcp(target: UptimeTarget, timeout: float) -> UptimeResult:
             latency_ms=(time.monotonic() - start) * 1000,
             detail="open",
         )
-    except (TimeoutError, OSError):
+    except (asyncio.TimeoutError, OSError):
         return UptimeResult(
             name=target.name, address=address, up=False, latency_ms=None, detail="closed"
         )
