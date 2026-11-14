@@ -22,3 +22,28 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: ruff check .
       - run: python -m pytest -q
+
+  package:
+    name: Build and install release packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build twine
+      - run: python -m build
+      - run: python -m twine check --strict dist/*
+      - name: Install the wheel outside the source checkout
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/roost-wheel"
+          "$RUNNER_TEMP/roost-wheel/bin/pip" install dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/roost-wheel/bin/roost" --help
+          "$RUNNER_TEMP/roost-wheel/bin/python" -c 'from importlib.metadata import version; import roost; assert roost.__version__ == version("roost")'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roost-distributions
+          path: dist/*
+          if-no-files-found: error

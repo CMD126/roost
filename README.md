@@ -308,6 +308,20 @@ python -m pytest -q
 python scripts/screenshots.py   # regenerate docs/*.svg from demo mode
 ```
 
+### Build a release candidate
+
+```bash
+python -m pip install build twine
+python -m build
+python -m twine check --strict dist/*
+```
+
+This produces a source archive and a wheel in `dist/`. The source archive
+includes `config.example.yaml`, the security policy and the
+[release notes](CHANGELOG.md). CI also installs the wheel into a clean
+environment, checks the CLI and version, and attaches the distributions to
+the workflow run. It does not publish a GitHub release or upload to PyPI.
+
 Tests cover the config loader (including the scan-range guardrails), each collector (mostly against real loopback
 targets (a throwaway TCP server for the port scanner, including a silent one and one that sends escape sequences)),
 the SQLite event store and change detection, demo mode, and headless runs of the full Textual app via
