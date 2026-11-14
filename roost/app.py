@@ -9,7 +9,7 @@ from textual.widgets import Footer, Header, TabbedContent, TabPane
 
 from .collectors import docker_containers, host, network, opencanary, portscan, uptime
 from .config import AppConfig, ConfigError, load_config
-from .models import NetworkDevice, PortScanResult, SecurityEvent
+from .models import DockerSnapshot, HostMetrics, NetworkDevice, PortScanResult, SecurityEvent, UptimeResult
 from .soc import SocStore, device_key
 from .widgets.containers_panel import ContainersPanel
 from .widgets.event_detail import Acknowledge
@@ -158,11 +158,17 @@ class HomelabDashboard(App):
         if target_id is not None:
             self.query_one(target_id).focus()
 
+    def _startup_sub_title(self) -> str | None:
+        if not self.config_path.exists():
+            return f"no {self.config_path.name} found, using defaults"
+        return None
+
     def on_mount(self) -> None:
         _silence_proactor_connection_reset(asyncio.get_running_loop())
 
-        if not self.config_path.exists():
-            self.sub_title = f"no {self.config_path.name} found, using defaults"
+        subtitle = self._startup_sub_title()
+        if subtitle:
+            self.sub_title = subtitle
 
         self._focus_tab_content("tab-security")
         self.set_interval(self.config.refresh_interval, self._trigger_fast_refresh)
@@ -215,18 +221,33 @@ class HomelabDashboard(App):
         except Exception as exc:
             self.log.error(f"refresh failed: {exc!r}")
 
-    async def _refresh_fast(self) -> None:
-        docker_snapshot, host_metrics, uptime_results = await asyncio.gather(
+    # Data sources, one per refresh cycle. Kept separate from the refresh
+    # methods below (which own persistence and rendering) so demo mode can
+    # swap in canned data without touching the event pipeline.
+    async def _collect_fast(self) -> tuple[DockerSnapshot, HostMetrics | None, list[UptimeResult]]:
+        return await asyncio.gather(
             docker_containers.collect(self.config.docker),
             host.collect(self.config.host),
             uptime.collect(self.config.uptime),
         )
+
+    async def _collect_devices(self) -> list[NetworkDevice]:
+        return await network.collect(self.config.network)
+
+    async def _collect_portscan(self, ips: list[str]) -> dict[str, PortScanResult]:
+        return await portscan.scan_hosts(ips, self.config.network.portscan)
+
+    async def _collect_canary(self) -> list[SecurityEvent]:
+        return await opencanary.collect(self.config.canary)
+
+    async def _refresh_fast(self) -> None:
+        docker_snapshot, host_metrics, uptime_results = await self._collect_fast()
         self.query_one(ContainersPanel).update_data(docker_snapshot)
         self.query_one(HostPanel).update_data(host_metrics)
         self.query_one(UptimePanel).update_data(uptime_results)
 
     async def _refresh_network(self) -> None:
-        self._last_devices = await network.collect(self.config.network)
+        self._last_devices = await self._collect_devices()
         device_events = self.soc.record_device_snapshot(self._last_devices)
         self._new_device_ips = {e.target for e in device_events}
         self._render_network_panel()
@@ -240,7 +261,7 @@ class HomelabDashboard(App):
 
     async def _refresh_portscan(self) -> None:
         ips = [d.ip for d in self._last_devices]
-        self._last_portscan = await portscan.scan_hosts(ips, self.config.network.portscan)
+        self._last_portscan = await self._collect_portscan(ips)
 
         ip_to_key = {d.ip: device_key(d) for d in self._last_devices}
         port_events: list[SecurityEvent] = []
@@ -255,7 +276,7 @@ class HomelabDashboard(App):
         self.query_one(NetworkPanel).update_data(self._last_devices, self._last_portscan, self._new_device_ips)
 
     async def _refresh_canary(self) -> None:
-        events: list[SecurityEvent] = await opencanary.collect(self.config.canary)
+        events = await self._collect_canary()
         self.soc.record_events(events)
         self._render_security_panel()
 

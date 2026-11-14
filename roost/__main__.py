@@ -17,7 +17,17 @@ def main() -> None:
         default=Path("config.yaml"),
         help="Path to config.yaml (default: ./config.yaml)",
     )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Run with made-up data. Nothing is scanned and no config is read.",
+    )
     args = parser.parse_args()
+    if args.demo:
+        from .demo import run_demo
+
+        run_demo()
+        return
     try:
         run(config_path=args.config)
     except ConfigError as exc:
