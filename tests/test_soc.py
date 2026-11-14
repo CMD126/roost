@@ -163,3 +163,17 @@ def test_device_key_prefers_mac_over_ip():
 
     device_no_mac = NetworkDevice(ip="192.168.1.5", hostname=None, latency_ms=None, mac=None)
     assert device_key(device_no_mac) == "192.168.1.5"
+
+
+def test_record_port_snapshot_tracks_by_mac_but_reports_ip(tmp_path):
+    # Port state is keyed by MAC so it survives a DHCP lease change, but the
+    # event should name the device the same way a new_device event does.
+    store = _store(tmp_path)
+    port = OpenPort(port=22, service="ssh", banner=None, risky=False)
+
+    events = store.record_port_snapshot("aa:bb:cc:dd:ee:ff", [port], ip="192.168.1.50")
+    assert events[0].target == "192.168.1.50"
+    assert events[0].detail["device_key"] == "aa:bb:cc:dd:ee:ff"
+
+    # Same MAC at a new IP: already known open, no duplicate alert.
+    assert store.record_port_snapshot("aa:bb:cc:dd:ee:ff", [port], ip="192.168.1.51") == []

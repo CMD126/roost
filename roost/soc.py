@@ -168,10 +168,16 @@ class SocStore:
 
         return self.record_events(new_events)
 
-    def record_port_snapshot(self, target_key: str, open_ports: list[OpenPort]) -> list[SecurityEvent]:
+    def record_port_snapshot(
+        self, target_key: str, open_ports: list[OpenPort], ip: str | None = None
+    ) -> list[SecurityEvent]:
         """Same presence-flip pattern as devices, scoped to one device's open
         ports. Only a closed->open transition ever alerts — closing a port is
         never itself an event.
+
+        `target_key` is the device identity (MAC when known) that port state is
+        tracked under; `ip` is what the event shows as its target, so port and
+        device events for the same machine name it the same way.
         """
         now = _now()
         new_events: list[SecurityEvent] = []
@@ -188,13 +194,13 @@ class SocStore:
                     "VALUES (?, ?, 'open', ?, ?)",
                     (target_key, port.port, now, now),
                 )
-                new_events.append(self._new_port_event(now, target_key, port))
+                new_events.append(self._new_port_event(now, target_key, ip or target_key, port))
             elif row["state"] == "closed":
                 self._conn.execute(
                     "UPDATE known_ports SET state = 'open', last_changed = ? WHERE device_key = ? AND port = ?",
                     (now, target_key, port.port),
                 )
-                new_events.append(self._new_port_event(now, target_key, port))
+                new_events.append(self._new_port_event(now, target_key, ip or target_key, port))
 
         open_rows = self._conn.execute(
             "SELECT port FROM known_ports WHERE device_key = ? AND state = 'open'", (target_key,)
@@ -209,14 +215,17 @@ class SocStore:
         return self.record_events(new_events)
 
     @staticmethod
-    def _new_port_event(now: str, target_key: str, port: OpenPort) -> SecurityEvent:
+    def _new_port_event(now: str, target_key: str, target: str, port: OpenPort) -> SecurityEvent:
         severity = "high" if port.risky else "medium"
         banner = f" ({port.banner})" if port.banner else ""
         return SecurityEvent(
             ts=now, source="network", event_type="new_port", severity=severity,
-            target=target_key, service=port.service,
+            target=target, service=port.service,
             summary=f"port {port.port}/{port.service} opened{banner}",
-            detail={"port": port.port, "service": port.service, "banner": port.banner, "risky": port.risky},
+            detail={
+                "port": port.port, "service": port.service, "banner": port.banner, "risky": port.risky,
+                "device_key": target_key,
+            },
         )
 
     def recent_events(self, limit: int = 200) -> list[SecurityEvent]:

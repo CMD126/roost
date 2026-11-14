@@ -245,7 +245,7 @@ class HomelabDashboard(App):
         ip_to_key = {d.ip: device_key(d) for d in self._last_devices}
         port_events: list[SecurityEvent] = []
         for ip, result in self._last_portscan.items():
-            port_events += self.soc.record_port_snapshot(ip_to_key.get(ip, ip), result.open_ports)
+            port_events += self.soc.record_port_snapshot(ip_to_key.get(ip, ip), result.open_ports, ip=ip)
 
         self._render_network_panel()
         if port_events:
