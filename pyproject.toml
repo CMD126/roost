@@ -15,6 +15,10 @@ dependencies = [
     "mac-vendor-lookup>=0.1.12",
 ]
 
+[project.urls]
+Homepage = "https://github.com/CMD126/roost"
+Issues = "https://github.com/CMD126/roost/issues"
+
 [project.scripts]
 roost = "roost.__main__:main"
 
