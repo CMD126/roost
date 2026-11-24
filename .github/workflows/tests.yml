@@ -15,8 +15,8 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]'
@@ -27,8 +27,8 @@ jobs:
     name: Build and install release packages
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install build twine
@@ -42,7 +42,7 @@ jobs:
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/roost-wheel/bin/roost" --help
           "$RUNNER_TEMP/roost-wheel/bin/python" -c 'from importlib.metadata import version; import roost; assert roost.__version__ == version("roost")'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: roost-distributions
           path: dist/*
