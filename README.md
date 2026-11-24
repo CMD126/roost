@@ -159,7 +159,7 @@ Events are de-duplicated by a stable key and stored in SQLite (`events_db`), tog
 
 Details that keep the queue honest:
 
-- **Honeypot lines are classified structurally.** OpenCanary also logs its own startup and housekeeping messages. A line only counts as an interaction when it has a non-empty `src_host`, which is more robust than hard-coding OpenCanary's internal log type numbers.
+- **Honeypot lines are classified structurally.** OpenCanary also logs its own startup and housekeeping messages. A line only counts as an interaction when it has a non-empty `src_host`, which is more reliable than hard-coding OpenCanary's internal log type numbers.
 - **Change detection survives restarts.** Which devices and ports are known is persisted, not kept as an in-memory "previous scan", so restarting Roost doesn't make the whole LAN look new again. Devices are tracked by MAC so a DHCP lease change isn't a new device.
 - **Only changes alert.** A port closing or a device leaving updates state silently, so a later reopening or return can be detected.
 - **The queue is ordered for triage:** unacknowledged first, newest first within that.
