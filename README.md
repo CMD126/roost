@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/banner.svg" alt="Roost: terminal SOC-lite for homelabs" width="100%">
+</p>
+
 # Roost
 
 **A terminal SOC-lite for your homelab: one SSH session shows your containers, hosts and services, plus a triage queue of real security signals from your LAN and an OpenCanary honeypot.**
