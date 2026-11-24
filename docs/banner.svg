@@ -1,20 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 260" role="img" aria-labelledby="t">
-  <title id="t">Roost</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-labelledby="t">
+  <title id="t">Roost: terminal SOC-lite for homelabs</title>
   <defs>
-    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#FFB454" stop-opacity=".55"/>
-      <stop offset="1" stop-color="#FFB454" stop-opacity="0"/>
-    </radialGradient>
+    <pattern id="p" width="26" height="26" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.1" fill="#2A3550" fill-opacity=".7"/></pattern>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#FFB454" stop-opacity=".55"/><stop offset="1" stop-color="#FFB454" stop-opacity="0"/></radialGradient>
   </defs>
-  <rect x="1" y="1" width="1198" height="258" rx="22" fill="#0A0E1A" stroke="#2A3550" stroke-width="2"/>
-  <g transform="translate(70 50) scale(2.6)">
-    <rect x="6" y="12" width="40" height="9" rx="3" fill="#8FA3C7" fill-opacity=".35"/>
-    <rect x="6" y="26" width="40" height="9" rx="3" fill="#8FA3C7" fill-opacity=".55"/>
-    <rect x="6" y="40" width="40" height="9" rx="3" fill="#8FA3C7" fill-opacity=".8"/>
-    <circle cx="52" cy="16.5" r="15" fill="url(#glow)" transform="translate(0 0)"/>
-    <circle cx="52" cy="16.5" r="5.5" fill="#FFB454"/>
-    <circle cx="52" cy="16.5" r="2" fill="#0A0E1A"/>
-  </g>
-  <text x="300" y="132" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="68" font-weight="600" letter-spacing="-1"><tspan fill="#E6EAF2">Roost</tspan><tspan fill="#FFB454"></tspan></text>
-  <text x="302" y="184" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="30" fill="#8FA3C7">Terminal SOC-lite for homelabs</text>
+  <rect x="1" y="1" width="1198" height="298" rx="22" fill="#0A0E1A" stroke="#2A3550" stroke-width="2"/>
+  <rect x="1" y="1" width="1198" height="298" rx="22" fill="url(#p)"/>
+  <text x="60" y="128" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="66" font-weight="600" letter-spacing="-1"><tspan fill="#E6EAF2">Roost</tspan><tspan fill="#FFB454"></tspan></text>
+  <text x="62" y="174" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="26" fill="#8FA3C7">Terminal SOC-lite for homelabs</text>
+  <rect x="62" y="232" width="77" height="34" rx="17" fill="#121829" stroke="#2A3550"/>
+  <text x="101" y="254" text-anchor="middle" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="15" fill="#8FA3C7">Docker</text>
+  <rect x="151" y="232" width="118" height="34" rx="17" fill="#121829" stroke="#2A3550"/>
+  <text x="210" y="254" text-anchor="middle" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="15" fill="#8FA3C7">OpenCanary</text>
+  <rect x="281" y="232" width="87" height="34" rx="17" fill="#121829" stroke="#2A3550"/>
+  <text x="325" y="254" text-anchor="middle" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="15" fill="#8FA3C7">Textual</text>
+  <rect x="610" y="34" width="540" height="232" rx="12" fill="#121829" stroke="#2A3550" stroke-width="2"/>
+  <path d="M610 78 H1150" stroke="#2A3550"/>
+  <text x="632" y="63" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#8FA3C7">Overview</text>
+  <text x="750" y="63" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#FFB454">Security</text>
+  <rect x="748" y="72" width="78" height="3" rx="1.5" fill="#FFB454"/>
+  <text x="868" y="63" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#8FA3C7">Network</text>
+  <text x="986" y="63" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#8FA3C7">Hosts</text>
+  <circle cx="640" cy="98" r="6" fill="#34D399"/>
+  <text x="658" y="104" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#E6EAF2">web-proxy</text>
+  <text x="800" y="104" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#8FA3C7">up</text>
+  <text x="1126" y="104" text-anchor="end" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#8FA3C7">12 ms</text>
+  <circle cx="640" cy="136" r="6" fill="#34D399"/>
+  <text x="658" y="142" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#E6EAF2">db-primary</text>
+  <text x="800" y="142" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#8FA3C7">up</text>
+  <text x="1126" y="142" text-anchor="end" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#8FA3C7">8 ms</text>
+  <rect x="620" y="158" width="520" height="32" rx="7" fill="#FFB454" fill-opacity=".14" stroke="#FFB454" stroke-opacity=".5"/>
+  <circle cx="640" cy="174" r="6" fill="#FFB454"/>
+  <text x="658" y="180" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#E6EAF2">opencanary</text>
+  <text x="800" y="180" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#FFB454">FTP login attempt  203.0.113.9</text>
+  <circle cx="640" cy="212" r="6" fill="#34D399"/>
+  <text x="658" y="218" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#E6EAF2">nas-01</text>
+  <text x="800" y="218" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#8FA3C7">up</text>
+  <text x="1126" y="218" text-anchor="end" font-family="'JetBrains Mono', Consolas, ui-monospace, monospace" font-size="16" fill="#8FA3C7">3 ms</text>
 </svg>
